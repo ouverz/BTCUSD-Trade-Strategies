@@ -5,11 +5,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /usr/app
-COPY pyproject.toml ./
-ENV UV_PROJECT_ENVIRONMENT=/opt/venv
-RUN pip install --no-cache-dir uv \
-    && uv sync --no-dev
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
 
-ENV PATH="/opt/venv/bin:${PATH}"
 ENTRYPOINT ["dbt"]
 

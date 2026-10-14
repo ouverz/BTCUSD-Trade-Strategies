@@ -37,8 +37,24 @@ while (($#)); do
 done
 
 date_pattern='^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
-[[ -z "$start_date" || "$start_date" =~ $date_pattern ]] || { echo "Invalid --start-date: $start_date" >&2; exit 2; }
-[[ -z "$end_date" || "$end_date" =~ $date_pattern ]] || { echo "Invalid --end-date: $end_date" >&2; exit 2; }
+is_valid_date() {
+    local candidate="$1"
+    local normalized_date
+
+    [[ "$candidate" =~ $date_pattern ]] || return 1
+    case "$(uname -s)" in
+        Darwin)
+            normalized_date="$(date -j -f '%Y-%m-%d' "$candidate" '+%Y-%m-%d' 2>/dev/null)" || return 1
+            ;;
+        *)
+            normalized_date="$(date -u -d "$candidate" '+%Y-%m-%d' 2>/dev/null)" || return 1
+            ;;
+    esac
+    [[ "$normalized_date" == "$candidate" ]]
+}
+
+[[ -z "$start_date" ]] || is_valid_date "$start_date" || { echo "Invalid --start-date: $start_date (expected a real YYYY-MM-DD date)" >&2; exit 2; }
+[[ -z "$end_date" ]] || is_valid_date "$end_date" || { echo "Invalid --end-date: $end_date (expected a real YYYY-MM-DD date)" >&2; exit 2; }
 [[ "$hour" == all || "$hour" =~ ^([0-9]|1[0-9]|2[0-3])$ ]] || { echo "--hour must be 0-23 or all" >&2; exit 2; }
 [[ -z "$start_date" || -z "$end_date" || "$start_date" < "$end_date" || "$start_date" == "$end_date" ]] || { echo "--start-date must not be after --end-date" >&2; exit 2; }
 

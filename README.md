@@ -1,36 +1,38 @@
 # BTC/USDT Hourly Strategy Backtest
 
-An end-to-end analytics engineering project that loads Binance one-second BTC/USDT candles into PostgreSQL, transforms them with dbt, and compares 24 hypothetical hourly trading strategies. The pipeline is designed to make candidate eligibility, source gaps, duplicate handling, compounding, and drawdown auditable—not just to produce two headline numbers.
+An end-to-end analytics engineering project for Binance one-second BTC/USDT candles. PostgreSQL stores the source data, dbt builds an auditable transformation pipeline, and the marts compare 24 hypothetical strategies—one for each UTC entry hour.
+
+The project makes source quality, candidate eligibility, exclusions, performance calculations, and model lineage inspectable. The results are historical outputs under explicit assumptions; they are not investment advice or evidence of future profitability.
+
+## Metric definitions
+
+Each **trade strategy** represents one UTC entry hour. For example, the 22:00 strategy attempts one trade per date: enter at the exact `22:00:00` candle open and exit at the exact `22:59:59` candle close. A date contributes only when both endpoint observations pass the eligibility rules.
+
+| Metric | Definition |
+|---|---|
+| **Trade factor** | Exit price divided by entry price. A factor of `1.02` means the position is multiplied by 1.02. |
+| **Trade return** | Trade factor minus 1. A factor of `1.02` is a `+2%` return; `0.98` is `−2%`. |
+| **Equity** | A normalized account-value index starting at `1.0`; after each eligible trade, prior equity is multiplied by that trade’s factor. It assumes full reinvestment and excludes cash flows. |
+| **Compounded return** | Ending equity minus starting equity, expressed as a percentage. For example, equity ending at `1.42519` represents a `42.519%` compounded return from `1.0`. |
+| **Drawdown** | Equity’s change relative to its running peak: `equity / running peak − 1`. It is zero at a new peak and negative below a peak. |
+| **Maximum drawdown magnitude** | The positive magnitude of the most negative drawdown. Smaller means a shallower worst peak-to-trough decline; it does not mean the strategy had smaller losing trades. |
+
+Equity compounds only across eligible trades; excluded dates do not add a zero-return trade. The headline metrics use the full eligible history. The yearly summary resets equity at the start of each calendar year and is a separate diagnostic.
 
 ## Findings
 
-The recorded full-history run covers eligible trades from **2021-02-23 through 2024-08-27**. Each result below is based on 1,282 eligible trade days.
+The recorded full-history run covers eligible trades from **2021-02-23 through 2024-08-27**. Each of the two winning strategies has **1,282 eligible trade days**.
 
-| Question | UTC entry hour | Result |
+| Assignment question | UTC entry hour | Result |
 |---|---:|---:|
 | Greatest compounded return | 22:00 | **42.519%** |
 | Smallest maximum-drawdown magnitude | 10:00 | **9.034%** |
 
-These are historical results under the assumptions below, not forecasts or evidence of future profitability. The best of 24 hours was selected after examining the same period, so the winning return is exposed to multiple-comparison and selection bias. The figures are from a previously validated run; run the pipeline on the supplied source file to reproduce and verify them.
+These are recorded reference results, not a guarantee that a fresh run will match a different input file. The winning hour was selected from 24 candidates on the same historical period, so the comparison is exposed to selection and multiple-comparison bias. The simulation excludes fees, spread, slippage, latency, market impact, taxes, leverage constraints, and execution failures.
 
-## What the strategy measures
+## Data model and lineage
 
-Each UTC hour is treated as a separate hypothetical account. On every eligible date, the account enters at that hour’s exact `HH:00:00` candle open and exits at the exact `HH:59:59` candle close. The full resulting balance is reinvested on the next eligible date.
-
-For each eligible trade:
-
-```text
-trade factor = exit price / entry price
-trade return = trade factor - 1
-equity = cumulative product of trade factors, starting from 1.0
-drawdown = equity / running peak - 1
-```
-
-“Smallest maximum-loss magnitude” is interpreted as the shallowest maximum peak-to-trough drawdown. It is not the smallest losing trade. The backtest excludes fees, bid/ask spread, slippage, latency, market impact, taxes, leverage constraints, and execution failures.
-
-## Data model
-
-The models make the grain and responsibility of each transformation explicit:
+The transformations keep each grain change explicit:
 
 ```mermaid
 flowchart LR
@@ -38,7 +40,7 @@ flowchart LR
     stg --> periods["intermediate: requested date-hour periods"]
     stg --> endpoints["intermediate: exact endpoint observations"]
     periods --> endpoints
-    endpoints --> trades["intermediate: classified candidate trades"]
+    endpoints --> trades["intermediate: classified candidates"]
     trades --> equity["intermediate: compounded equity and drawdown"]
     trades --> fact["mart: trade-level audit fact"]
     equity --> fact
@@ -47,83 +49,123 @@ flowchart LR
     summary --> answers["mart: assignment answers"]
 ```
 
-Key relations in the `analytics_marts` schema:
+Key analyst-facing relations in `analytics_marts`:
 
-| Model | Purpose |
+| Model | Grain and purpose |
 |---|---|
-| `fct_hourly_strategy_trades` | One row per requested date-hour, including exclusions, reasons, endpoint diagnostics, and eligible-trade metrics. |
-| `agg_hourly_strategy_summary` | All-history coverage, return distribution, compounded return, and drawdown for each of the 24 hours. |
-| `agg_hourly_strategy_yearly` | Calendar-year diagnostics and performance, with equity reset each year. |
-| `rpt_assignment_answers` | The two deterministic winners used to answer the assignment. |
+| [`fct_hourly_strategy_trades`](models/marts/fct_hourly_strategy_trades.sql) | One row per requested date and UTC hour, including eligibility, exclusion reasons, endpoint diagnostics, and eligible-trade metrics. |
+| [`agg_hourly_strategy_summary`](models/marts/agg_hourly_strategy_summary.sql) | One row per hour with coverage, return distribution, compounded return, and maximum drawdown across the full period. |
+| [`agg_hourly_strategy_yearly`](models/marts/agg_hourly_strategy_yearly.sql) | One row per year and hour, with year-local equity and performance diagnostics. |
+| [`rpt_assignment_answers`](models/marts/rpt_assignment_answers.sql) | The two deterministic assignment winners selected from the hourly summary. |
 
-### Data-quality policy
+### Data and eligibility policy
 
-The source is kept at physical-row grain in raw and staging. At the strategy endpoints, repeated rows are accepted only when the relevant prices agree: entry `open` at the exact start timestamp and valid exit `close` at the exact final-second timestamp. Conflicting prices are not resolved by choosing a maximum or latest record; the price remains unresolved and the candidate is excluded. Any malformed physical copy at the exit timestamp also excludes the candidate. Nearby timestamps are not substituted for missing exact endpoints.
+Raw and staging preserve physical source rows; they do not globally deduplicate candles. Resolution happens only at the two strategy endpoints.
 
-Candidates whose endpoints fall outside the dataset’s overall timestamp window remain visible as `outside_source_window` and are excluded from the in-source coverage denominator. Internal missing endpoints, conflicting prices, nonpositive prices, and malformed exits remain visible with diagnostic counts and statuses.
+| Condition | Treatment | Effect |
+|---|---|---|
+| Repeated endpoint rows with the same relevant price | Accept the shared price; retain row counts for diagnostics. | Candidate may remain eligible. |
+| Conflicting entry opens or valid exit closes | Do not choose a preferred version; leave the price unresolved. | Candidate is excluded and classified. |
+| Any malformed close-time row at the exact exit timestamp | Retain as an audit finding; do not use the exit price. | Candidate is excluded. |
+| Missing exact endpoint or nonpositive endpoint price | Do not substitute a nearby timestamp or price. | Candidate is excluded. |
+| Requested endpoint outside the overall source timestamp window | Keep the candidate visible as `outside_source_window`. | Excluded from the in-source coverage denominator. |
+| In-window candidate with unusable endpoint data | Keep it visible with diagnostics and an exclusion reason. | Included in the in-source denominator, not in eligible trades. |
 
-## Run the project
+The source audit also rejects impossible prices, OHLC relationships, volume relationships, and load-metadata mismatches. Malformed close timestamps are recorded as diagnostics rather than failing ingestion, so the affected strategy candidates can be explicitly excluded downstream.
 
-### Requirements
+## Reproduce the project
 
-- Docker with Docker Compose v2
-- The assignment CSV in the project root (or provide its path through `DATA_FILE`)
-- The container and CI use UV to install the Python dependencies declared in `pyproject.toml`; install UV on the host only if you want a local Python environment
+### Requirements and input
 
-The input header must match this exact, case-sensitive sequence:
+- Git, to clone the repository (or download the source archive).
+- Docker with Docker Compose v2.
+- The assignment CSV. Place exactly one `.csv` file in the project root, or set `DATA_FILE` to its path.
+- The CSV must have this exact, case-sensitive header:
 
 ```text
 Open Time,Open,High,Low,Close,Volume,Close Time,Quote Asset Volume,Number of Trades,Taker Buy Base Asset Volume,Taker Buy Quote Asset Volume,Ignore
 ```
 
-Copy `.env.example` to `.env` before running. The supplied credentials are for local development. PostgreSQL is bound to localhost; do not expose this Compose configuration as a production database. The source CSV is runtime input and is excluded from version control and the Docker build context.
+The CSV is runtime input and is excluded from version control and the Docker build context. Host-installed Python dependencies are not required for the end-to-end Docker workflow.
 
-### End-to-end run
+### End-to-end steps
+
+1. **Clone the project and provide the source CSV.** Use the assignment-provided file; do not commit it.
+
+   ```bash
+   git clone https://github.com/ouverz/BTCUSD-Trade-Strategies.git
+   cd BTCUSD-Trade-Strategies
+   ```
+
+2. **Configure local credentials.** Optionally copy `.env.example` to `.env` and set a local `POSTGRES_PASSWORD`. The example values are for local development only. PostgreSQL is bound to localhost; do not expose this Compose configuration as a production database.
+3. **Run the complete workflow:**
+
+   ```bash
+   ./run.sh
+   ```
+
+   The script starts PostgreSQL and waits for it to become healthy, creates the raw/audit tables, loads or reuses the CSV, runs the source-quality audit, installs dbt packages, executes `dbt build`, generates dbt documentation, checks governance rules, and prints the assignment answers and endpoint-quality summary.
+
+4. **Review the output.** Confirm the result rows, evaluated dates, eligible counts, and exclusion totals printed at the end. The run also writes dbt artifacts under `target/` and logs under `logs/`.
+
+PostgreSQL data persists in the local `postgres_data/` directory. `docker compose down` stops the services but preserves that data.
+
+### Optional local controls
+
+These options tailor a run without changing the default full-history workflow:
 
 ```bash
-./run.sh
-```
-
-The script starts PostgreSQL, creates the raw relations if needed, loads or reuses the selected source, runs the source-quality audit, installs dbt packages, executes `dbt build`, generates dbt documentation, runs governance checks, and prints the assignment answers plus an endpoint-quality summary.
-
-Optional examples:
-
-```bash
+# Restrict the evaluated date range; bounds are inclusive.
 ./run.sh --start-date 2024-01-01 --end-date 2024-01-31
+
+# Select an explicit input file instead of the single root-level CSV.
 DATA_FILE=/absolute/path/to/candles.csv ./run.sh
+
+# Filter the displayed winner report to a UTC hour (does not limit model calculations).
+./run.sh --hour 22
+
+# Replace the currently loaded raw data and rerun the source audit.
 ./run.sh --reload
 ```
 
-Date bounds are inclusive. `--reload` replaces the raw dataset transactionally and reruns its source audit. Without it, a loaded source is reused only when the selected filename and file size match the latest load audit; same-size content changes are not detected because checksums are not currently calculated. PostgreSQL data persists in the local `postgres_data/` bind mount; `docker compose down` stops services but does not remove that data.
-
-`--hour 0-23` filters the displayed two-row winner report only. It does not restrict model calculations to one strategy, and the report will have no matching row when the chosen hour did not win either question.
+Use `--reload` deliberately: it replaces the raw table’s current contents and can take substantial time, disk space, and database I/O for the full source. Without `--reload`, the existing load is reused only when the selected filename and file size match the latest load audit. Same-size content changes are not detected because checksums are deferred.
 
 ### Focused dbt development
 
-After the raw data has been loaded, the dbt commands can be run independently:
+After PostgreSQL is running and raw data has been loaded, iterate on dbt independently:
 
 ```bash
 docker compose run --rm dbt deps
 docker compose run --rm dbt build
+```
+
+`dbt build` runs selected models and their configured tests. To rerun tests without rebuilding models:
+
+```bash
 docker compose run --rm dbt test
 ```
 
-Python dependencies are declared in `pyproject.toml`, which pins `dbt-postgres` directly. A `uv.lock` is not currently committed, so transitive dependency versions are not fully frozen. For a local host-side environment, run `uv sync`; the main workflow does not require host-side dbt because it runs dbt in Docker.
+These commands assume the Compose database and loaded raw relation already exist. Python dependencies are declared in [`requirements.txt`](requirements.txt) and installed with pip in the Docker image and CI. The direct dbt adapter version is pinned; transitive Python dependency versions are not fully locked.
 
-## Validation and observability
+## Validation and governance
 
-- dbt generic and singular data tests check keys, status/eligibility consistency, exact endpoint use, candidate counts, compounding, drawdown, yearly reconciliation, and final-answer cardinality.
-- dbt unit tests cover endpoint pairing, duplicate/conflict behavior, malformed exits, eligibility, and equity calculations with deterministic fixtures.
-- Public marts enforce dbt model contracts and document columns; a manifest-based governance check validates documentation, contracts, and source-layer boundaries.
-- GitHub Actions builds the project against a deterministic two-day PostgreSQL fixture, without downloading or committing the full market-data file.
-- `raw.load_audit` records load provenance; `raw.source_quality_audit` retains source-quality results by load. `sql/source_quality_results.sql` displays the latest audit.
+Controls are applied at several distinct stages. A passing test suite validates defined data and transformation rules; it does not establish that a strategy is profitable or statistically robust.
 
-The consolidated source audit rejects impossible prices, OHLC relationships, volume relationships, and load-metadata mismatches. Known malformed close timestamps are retained as diagnostics rather than failing ingestion, allowing the transformation logic to exclude affected strategy candidates explicitly.
+| Area | How it is governed | Where to inspect |
+|---|---|---|
+| Ingestion and source integrity | SQL audit checks physical row counts, timestamp bounds, price/OHLC/volume constraints, and load metadata. Malformed close-time rows are counted and retained as diagnostics. A failed hard check stops the run. | [`scripts/source_quality_audit.sql`](scripts/source_quality_audit.sql), [`scripts/load_data.sql`](scripts/load_data.sql), `raw.source_quality_audit` |
+| Endpoint and eligibility logic | dbt unit tests exercise exact timestamps, identical duplicates, conflicting prices, malformed exits, eligibility, and compounding with deterministic examples. | [`models/intermediate/intermediate.yml`](models/intermediate/intermediate.yml) (`unit_tests`) |
+| Transformation and metric invariants | Singular SQL tests check exact endpoint use, status/eligibility consistency, candidate-count reconciliation, exclusions, equity compounding, drawdown, yearly reconciliation, and answer cardinality. | [`tests/`](tests/) |
+| Keys, accepted values, and model contracts | dbt generic tests enforce nullability, uniqueness, ranges, and composite grain. Public marts enforce declared column contracts and data types. | [`models/staging/`](models/staging/), [`models/intermediate/intermediate.yml`](models/intermediate/intermediate.yml), [`models/marts/marts.yml`](models/marts/marts.yml) |
+| Documentation and architecture rules | A manifest-based check requires model/column descriptions, prevents non-staging models from reading sources directly, requires mart contracts/data types, and checks the analyst exposure. | [`scripts/governance_check.py`](scripts/governance_check.py) |
+| Continuous integration | GitHub Actions generates a deterministic two-day synthetic CSV and runs `run.sh` end-to-end, including ingestion, source audit, dbt build/tests, docs, governance, and result assertions. It does not download the full assignment dataset or validate the recorded full-history winners. | [`.github/workflows/dbt-quality.yml`](.github/workflows/dbt-quality.yml), [`scripts/create_ci_fixture.py`](scripts/create_ci_fixture.py), [`tests/fixtures/assert_ci_results.sql`](tests/fixtures/assert_ci_results.sql) |
 
-## Reproducibility and known limitations
+Load provenance is stored in `raw.load_audit`; per-load source-quality results are stored in `raw.source_quality_audit`. Use [`sql/source_quality_results.sql`](sql/source_quality_results.sql) to review the latest source audit. The end-to-end script also saves the dbt build result as `target/build_run_results.json` before generating docs.
 
-- The source’s first and last dates may be partial; such boundary candidates are visible but are not counted as internal endpoint failures.
-- Duplicate/conflict resolution is scoped to the two timestamps and price fields used by this strategy. The project does not build a canonicalized full-source candle table or a row-level quarantine system.
+## Limitations and interpretation
+
+- The first and last dates in the source may be partial. Such boundary candidates are visible but excluded from the in-source coverage denominator.
+- Duplicate/conflict handling is limited to the exact endpoint timestamps and prices used by this strategy. The project does not create a canonicalized full-source candle table or row-level quarantine system.
 - Source identity is checked by filename and file size, not a content checksum.
-- Annual results are diagnostic views of historical stability, not out-of-sample validation. A more credible profitability assessment would require pre-defined selection rules, an untouched evaluation period, and realistic transaction costs.
-- Generated dbt documentation and build artifacts are written under `target/`; the saved build run result is `target/build_run_results.json`.
+- The 24 hours are compared on the same historical sample. Selecting the apparent winner on that sample introduces selection bias; yearly summaries are diagnostics, not out-of-sample validation.
+- Trading costs and execution constraints are not available in the assignment input and are not modeled. Credible profitability assessment would require pre-defined selection rules, an untouched evaluation period, and realistic cost and execution assumptions.

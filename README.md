@@ -1,25 +1,19 @@
 # BTC/USDT Hourly Strategy Backtest
 
-An end-to-end PostgreSQL and dbt pipeline for evaluating daily BTC/USDT hourly strategies from one-second candle data.
+## Context 
 
-## Assignment context
-
-The Bitcoin Backtesting Engine assignment frames the work around an analyst’s proposed Bitcoin strategy and asks for a repeatable evaluation using the assignment-provided Binance BTC/USDT one-second dataset from Kaggle. Its main emphasis is the transformation layer and the quality of the assumptions, verification, and testing—not elaborate data loading.
+The Bitcoin Backtesting Engine assignment asks to evaluate an analyst’s proposed Bitcoin trading strategy using the provided Binance BTC/USDT one-second dataset from Kaggle. The main emphasis is the transformation layer and the quality of the assumptions, verification, and testing—rather than an elaborate data loading or ingestion mechanism.
 
 ### Strategy definition
 
-Each strategy uses the same UTC entry hour every day. For example, the 22:00 strategy enters at the exact `22:00:00` candle open and exits at the exact `22:59:59` candle close. A date contributes a trade only when both endpoint observations meet the eligibility rules. Gains and losses are fully reinvested in subsequent eligible trades. The analysis can be repeated for different hours and evaluation date ranges.
+Each strategy uses the same UTC entry hour every day across the entire eligible date range. For example, the 22:00 strategy enters at exactly the `22:00:00` candle open and exits at the `22:59:59` candle close. A date contributes a trade only when both endpoint observations meet the eligibility rules. Gains and losses are fully reinvested in subsequent eligible trades. The analysis can be repeated for different hours and evaluation date ranges.
 
 ### Questions answered
-
-The assignment asks:
 
 1. Which hour of the day had the greatest returns?
 2. Which hour of the day had the lowest maximum losses?
 
-This implementation evaluates all 24 UTC entry hours and operationalizes the questions as greatest compounded return and smallest maximum-drawdown magnitude. PostgreSQL stores the source; dbt builds and tests auditable endpoint observations, eligibility and exclusions, equity and drawdown calculations, and final comparisons.
-
-The findings are historical results under explicit assumptions—not investment advice or evidence of future profitability. The simulation omits trading costs and execution constraints, and choosing a winner from the same period used to evaluate it creates selection bias.
+This implementation evaluates all 24 UTC entry hours and operationalizes the questions as greatest compounded return and smallest maximum-drawdown magnitude. The simulation omits trading costs and execution constraints.
 
 ## Metric definitions
 
@@ -40,22 +34,18 @@ Equity compounds only across eligible trades; excluded dates do not add a zero-r
 
 The recorded full-history run covers eligible trades from **2021-02-23 through 2024-08-27**. Each of the two winning strategies has **1,282 eligible trade days**.
 
-Eligibility is evaluated independently for each hour, so eligible counts and coverage can differ slightly across strategies. Review coverage and exclusion diagnostics alongside returns when comparing the hours.
+Eligibility is evaluated independently for each hour, so eligible counts and coverage can differ slightly across strategies. 
 
 | Assignment question | UTC entry hour | Result |
 |---|---:|---:|
 | Greatest compounded return | 22:00 | **42.519%** |
 | Smallest maximum-drawdown magnitude | 10:00 | **9.034%** |
 
-These are recorded reference results, not a guarantee that a fresh run will match a different input file. The winning hour was selected from 24 candidates on the same historical period, so the comparison is exposed to selection and multiple-comparison bias. The simulation excludes fees, spread, slippage, latency, market impact, taxes, leverage constraints, and execution failures.
-
 ## Data model and lineage
 
 The graph below shows dbt model lineage and its connected tests and exposure, from the raw source through the analyst-facing marts.
 
 ![dbt model lineage, tests, and exposure](Lineage%20Graph.png)
-
-The saved graph predates the fact-model rename: its `fct_hourly_strategy_trades` node is now `fct_hourly_strategy_candidates`. Refresh the screenshot after generating the current dbt docs before publishing.
 
 Key analyst-facing relations in `analytics_marts`:
 
@@ -68,7 +58,7 @@ Key analyst-facing relations in `analytics_marts`:
 
 ### Data and eligibility policy
 
-Raw and staging preserve physical source rows; they do not globally deduplicate candles. Resolution happens only at the two strategy endpoints.
+Raw and staging preserve physical source rows; they do not globally deduplicate candles. Resolution happens occurs at the two strategy endpoints.
 
 | Condition | Treatment | Effect |
 |---|---|---|
@@ -85,7 +75,7 @@ The source audit also rejects impossible prices, OHLC relationships, volume rela
 
 ### Requirements and input
 
-- Git, to clone the repository (or download the source archive).
+- Git, in order to clone the repository (or download the source archive).
 - Docker with Docker Compose v2.
 - The assignment CSV. Place exactly one `.csv` file in the project root, or set `DATA_FILE` to its path.
 - The CSV must have this exact, case-sensitive header:
@@ -94,7 +84,7 @@ The source audit also rejects impossible prices, OHLC relationships, volume rela
 Open Time,Open,High,Low,Close,Volume,Close Time,Quote Asset Volume,Number of Trades,Taker Buy Base Asset Volume,Taker Buy Quote Asset Volume,Ignore
 ```
 
-The CSV is runtime input and is excluded from version control and the Docker build context. Host-installed Python dependencies are not required for the end-to-end Docker workflow.
+The CSV is runtime input and is excluded from version control and the Docker build context.
 
 ### End-to-end steps
 

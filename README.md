@@ -1,21 +1,29 @@
 # BTC/USDT Hourly Strategy Backtest
 
-The Bitcoin Backtesting Engine assignment asks for a repeatable analysis of a proposed Bitcoin trading strategy, using Binance BTC/USDT one-second candle data from the provided Kaggle dataset. The central challenge is to transform that detailed source into trustworthy, testable performance results; the assignment places more emphasis on the transformation layer than on the mechanics of loading data.
+An end-to-end PostgreSQL and dbt pipeline for evaluating daily BTC/USDT hourly strategies from one-second candle data.
 
-The strategy buys at the first second of a selected hour and sells at its final second, repeating the trade daily at the same UTC hour. Gains and losses are fully reinvested in subsequent trades. The analysis should be easy to repeat for different hours and evaluation periods.
+## Assignment context
 
-The assignment asks two business questions:
+The Bitcoin Backtesting Engine assignment frames the work around an analyst’s proposed Bitcoin strategy and asks for a repeatable evaluation using the assignment-provided Binance BTC/USDT one-second dataset from Kaggle. Its main emphasis is the transformation layer and the quality of the assumptions, verification, and testing—not elaborate data loading.
 
-- Which hour of the day had the greatest returns?
-- Which hour of the day had the lowest maximum losses?
+### Strategy definition
 
-This implementation operationalizes those questions as greatest compounded return and smallest maximum-drawdown magnitude. It evaluates all 24 UTC entry hours over the available history, with configurable date bounds. PostgreSQL stores the source data; dbt transforms and tests it through auditable endpoint observations, trade eligibility and exclusions, equity and drawdown calculations, and final comparisons.
+Each strategy uses the same UTC entry hour every day. For example, the 22:00 strategy enters at the exact `22:00:00` candle open and exits at the exact `22:59:59` candle close. A date contributes a trade only when both endpoint observations meet the eligibility rules. Gains and losses are fully reinvested in subsequent eligible trades. The analysis can be repeated for different hours and evaluation date ranges.
+
+### Questions answered
+
+The assignment asks:
+
+1. Which hour of the day had the greatest returns?
+2. Which hour of the day had the lowest maximum losses?
+
+This implementation evaluates all 24 UTC entry hours and operationalizes the questions as greatest compounded return and smallest maximum-drawdown magnitude. PostgreSQL stores the source; dbt builds and tests auditable endpoint observations, eligibility and exclusions, equity and drawdown calculations, and final comparisons.
 
 The findings are historical results under explicit assumptions—not investment advice or evidence of future profitability. The simulation omits trading costs and execution constraints, and choosing a winner from the same period used to evaluate it creates selection bias.
 
 ## Metric definitions
 
-Each **trade strategy** represents one UTC entry hour. For example, the 22:00 strategy attempts one trade per date: enter at the exact `22:00:00` candle open and exit at the exact `22:59:59` candle close. A date contributes only when both endpoint observations pass the eligibility rules.
+The implementation starts with a normalized account value of `1.0`; daily trade factors compound sequentially, representing full reinvestment. Each **trade strategy** represents one UTC entry hour.
 
 | Metric | Definition |
 |---|---|
@@ -31,6 +39,8 @@ Equity compounds only across eligible trades; excluded dates do not add a zero-r
 ## Findings
 
 The recorded full-history run covers eligible trades from **2021-02-23 through 2024-08-27**. Each of the two winning strategies has **1,282 eligible trade days**.
+
+Eligibility is evaluated independently for each hour, so eligible counts and coverage can differ slightly across strategies. Review coverage and exclusion diagnostics alongside returns when comparing the hours.
 
 | Assignment question | UTC entry hour | Result |
 |---|---:|---:|
@@ -142,6 +152,22 @@ docker compose run --rm dbt test
 ```
 
 These commands assume the Compose database and loaded raw relation already exist. Python dependencies are declared in [`requirements.txt`](requirements.txt) and installed with pip in the Docker image and CI. The direct dbt adapter version is pinned; transitive Python dependency versions are not fully locked.
+
+### Troubleshooting a PostgreSQL port conflict
+
+If Compose reports that port `5432` is already allocated, another local PostgreSQL service or Compose project is using it. Identify the listener before stopping anything:
+
+```bash
+lsof -nP -iTCP:5432 -sTCP:LISTEN
+```
+
+To keep the other service running, set `POSTGRES_PORT=5433` in `.env` and rerun the desired workflow. For a one-off Compose command without changing `.env`, prefix it with the alternate port:
+
+```bash
+POSTGRES_PORT=5433 docker compose run --rm dbt docs generate
+```
+
+The dbt container still connects to PostgreSQL on the Compose network’s internal port `5432`; `POSTGRES_PORT` changes only the port exposed on the host.
 
 ## Validation and governance
 

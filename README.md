@@ -1,7 +1,5 @@
 # BTC/USDT Hourly Strategy Backtest
 
-## Context 
-
 The Bitcoin Backtesting Engine assignment asks to evaluate an analyst’s proposed Bitcoin trading strategy using the provided Binance BTC/USDT one-second dataset from Kaggle. The main emphasis is the transformation layer and the quality of the assumptions, verification, and testing—rather than an elaborate data loading or ingestion mechanism.
 
 ### Strategy definition

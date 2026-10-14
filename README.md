@@ -1,8 +1,15 @@
 # BTC/USDT Hourly Strategy Backtest
 
-An end-to-end analytics engineering project for Binance one-second BTC/USDT candles. PostgreSQL stores the source data, dbt builds an auditable transformation pipeline, and the marts compare 24 hypothetical strategies—one for each UTC entry hour.
+This project answers two questions from the Bitcoin Backtesting Engine assignment using Binance one-second BTC/USDT candles:
 
-The project makes source quality, candidate eligibility, exclusions, performance calculations, and model lineage inspectable. The results are historical outputs under explicit assumptions; they are not investment advice or evidence of future profitability.
+- Which UTC hour would have produced the greatest compounded return?
+- Which UTC hour would have had the smallest maximum loss (measured here as maximum drawdown magnitude)?
+
+The assignment describes a daily, one-hour trade: buy one bitcoin at the first second of a chosen hour, sell at its last second, and reinvest the resulting gains or losses in the next trade. This implementation evaluates all 24 UTC entry hours over the available history, with configurable date bounds, so the comparison can be repeated for different hours and periods.
+
+The main work is the transformation layer: turning raw second-level candles into auditable endpoint observations, eligible or excluded daily trades, compounded equity and drawdown, and final hourly comparisons. PostgreSQL stores the source data; dbt builds and tests those transformations. Source quality, eligibility decisions, exclusions, metric calculations, and model lineage are inspectable throughout.
+
+The findings are historical results under explicit assumptions—not investment advice or evidence of future profitability. The simulation omits trading costs and execution constraints, and choosing a winner from the same period used to evaluate it creates selection bias.
 
 ## Metric definitions
 

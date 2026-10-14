@@ -161,7 +161,8 @@ fi
 dbt_vars="{start_date: ${start_date:-null}, end_date: ${end_date:-null}}"
 "${compose[@]}" run --rm dbt deps
 "${compose[@]}" run --rm dbt build --vars "$dbt_vars"
-[[ ! -f target/run_results.json ]] || cp target/run_results.json target/build_run_results.json
+"${compose[@]}" run --rm --entrypoint cp dbt \
+    target/run_results.json target/build_run_results.json
 "${compose[@]}" run --rm dbt docs generate --vars "$dbt_vars"
 "${compose[@]}" run --rm --entrypoint python dbt scripts/governance_check.py
 

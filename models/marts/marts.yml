@@ -1,0 +1,149 @@
+version: 2
+
+models:
+  - name: fct_hourly_strategy_trades
+    description: Contracted audit fact containing every requested date-hour candidate and eligible-trade performance.
+    config:
+      contract: {enforced: true}
+    columns:
+      - {name: symbol, data_type: text, description: Market symbol, data_tests: [not_null]}
+      - {name: trade_date, data_type: date, description: Requested UTC trade date, data_tests: [not_null]}
+      - {name: entry_hour_utc, data_type: integer, description: UTC strategy hour, data_tests: [not_null]}
+      - {name: expected_entry_at_utc, data_type: timestamp without time zone, description: Exact expected entry timestamp, data_tests: [not_null]}
+      - {name: expected_exit_at_utc, data_type: timestamp without time zone, description: Exact expected exit-candle opening timestamp, data_tests: [not_null]}
+      - {name: source_min_opened_at_utc, data_type: timestamp without time zone, description: Earliest source timestamp, data_tests: [not_null]}
+      - {name: source_max_opened_at_utc, data_type: timestamp without time zone, description: Latest source timestamp, data_tests: [not_null]}
+      - {name: is_within_source_window, data_type: boolean, description: Whether both endpoints lie inside source coverage, data_tests: [not_null]}
+      - {name: entry_price, data_type: 'numeric(38, 18)', description: Exact entry open, null when copies conflict.}
+      - {name: exit_price, data_type: 'numeric(38, 18)', description: Exact valid exit close, null when copies conflict or any exit copy is malformed.}
+      - {name: entry_row_count, data_type: bigint, description: Physical entry rows, data_tests: [not_null]}
+      - {name: entry_price_version_count, data_type: bigint, description: Distinct entry prices, data_tests: [not_null]}
+      - {name: exit_row_count, data_type: bigint, description: Physical exit rows, data_tests: [not_null]}
+      - {name: exit_price_version_count, data_type: bigint, description: Distinct valid exit prices, data_tests: [not_null]}
+      - {name: invalid_exit_close_time_count, data_type: bigint, description: Malformed exit rows, data_tests: [not_null]}
+      - {name: is_missing_entry, data_type: boolean, description: Exact entry observation is absent, data_tests: [not_null]}
+      - {name: has_conflicting_entry, data_type: boolean, description: Entry prices conflict, data_tests: [not_null]}
+      - {name: has_nonpositive_entry, data_type: boolean, description: Entry price is nonpositive, data_tests: [not_null]}
+      - {name: is_missing_exit, data_type: boolean, description: Exact exit observation is absent, data_tests: [not_null]}
+      - {name: has_malformed_exit, data_type: boolean, description: An exit row has invalid candle timing, data_tests: [not_null]}
+      - {name: has_conflicting_exit, data_type: boolean, description: Valid exit prices conflict, data_tests: [not_null]}
+      - {name: has_nonpositive_exit, data_type: boolean, description: Exit price is nonpositive, data_tests: [not_null]}
+      - {name: trade_status, data_type: text, description: Deterministic primary candidate status, data_tests: [not_null]}
+      - {name: exclusion_reason, data_type: text, description: Primary exclusion reason; null for eligible trades.}
+      - {name: is_eligible_trade, data_type: boolean, description: Candidate eligibility for performance calculations, data_tests: [not_null]}
+      - {name: trade_factor, data_type: 'numeric(38, 18)', description: Eligible one-hour equity multiplier.}
+      - {name: trade_return, data_type: 'numeric(38, 18)', description: Eligible one-hour return.}
+      - {name: trade_sequence, data_type: bigint, description: Eligible chronological trade sequence.}
+      - {name: equity, data_type: double precision, description: Compounded eligible-trade equity.}
+      - {name: running_peak, data_type: double precision, description: Running equity peak floored at one.}
+      - {name: running_peak_date, data_type: date, description: Date of the applicable observed running peak.}
+      - {name: cumulative_return, data_type: double precision, description: Compounded return since inception.}
+      - {name: drawdown, data_type: double precision, description: Peak-relative drawdown.}
+    data_tests:
+      - dbt_expectations.expect_compound_columns_to_be_unique:
+          arguments:
+            column_list: [symbol, trade_date, entry_hour_utc]
+
+  - name: agg_hourly_strategy_summary
+    description: Contracted all-history comparison of the 24 UTC hourly strategies.
+    config:
+      contract: {enforced: true}
+    columns:
+      - {name: symbol, data_type: text, description: Market symbol, data_tests: [not_null]}
+      - name: entry_hour_utc
+        data_type: integer
+        description: UTC strategy hour.
+        data_tests:
+          - not_null
+          - unique
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments: {min_value: 0, max_value: 23}
+      - {name: requested_period_count, data_type: bigint, description: All requested date-hour candidates, data_tests: [not_null]}
+      - {name: outside_source_period_count, data_type: bigint, description: Requested candidates outside complete source coverage, data_tests: [not_null]}
+      - {name: in_source_period_count, data_type: bigint, description: Candidates fully inside source coverage, data_tests: [not_null]}
+      - {name: eligible_trade_count, data_type: bigint, description: Eligible trades, data_tests: [not_null]}
+      - {name: excluded_in_source_period_count, data_type: bigint, description: In-source candidates rejected by endpoint quality rules, data_tests: [not_null]}
+      - {name: coverage_rate, data_type: double precision, description: Eligible trades divided by in-source candidates, data_tests: [not_null]}
+      - {name: missing_entry_period_count, data_type: bigint, description: In-source candidates missing entry, data_tests: [not_null]}
+      - {name: missing_exit_period_count, data_type: bigint, description: In-source candidates missing exit, data_tests: [not_null]}
+      - {name: conflicting_entry_period_count, data_type: bigint, description: In-source candidates with conflicting entry prices, data_tests: [not_null]}
+      - {name: conflicting_exit_period_count, data_type: bigint, description: In-source candidates with conflicting exit prices, data_tests: [not_null]}
+      - {name: malformed_exit_period_count, data_type: bigint, description: In-source candidates with malformed exit timing, data_tests: [not_null]}
+      - {name: deduplicated_entry_period_count, data_type: bigint, description: Identical repeated entry observations, data_tests: [not_null]}
+      - {name: deduplicated_exit_period_count, data_type: bigint, description: Identical repeated valid exit observations, data_tests: [not_null]}
+      - {name: candidate_start_date, data_type: date, description: First in-source candidate date, data_tests: [not_null]}
+      - {name: candidate_end_date, data_type: date, description: Last in-source candidate date, data_tests: [not_null]}
+      - {name: evaluated_start_date, data_type: date, description: First eligible trade date, data_tests: [not_null]}
+      - {name: evaluated_end_date, data_type: date, description: Last eligible trade date, data_tests: [not_null]}
+      - {name: mean_trade_return, data_type: double precision, description: Arithmetic mean eligible one-hour return, data_tests: [not_null]}
+      - {name: median_trade_return, data_type: double precision, description: Median eligible one-hour return, data_tests: [not_null]}
+      - {name: trade_return_stddev, data_type: double precision, description: Sample standard deviation of eligible returns, data_tests: [not_null]}
+      - {name: positive_trade_rate, data_type: double precision, description: Share of eligible trades with positive return, data_tests: [not_null]}
+      - {name: worst_trade_return, data_type: double precision, description: Lowest eligible one-hour return, data_tests: [not_null]}
+      - {name: best_trade_return, data_type: double precision, description: Highest eligible one-hour return, data_tests: [not_null]}
+      - {name: final_equity, data_type: double precision, description: Terminal compounded equity, data_tests: [not_null]}
+      - {name: compounded_return, data_type: double precision, description: Terminal equity minus initial equity, data_tests: [not_null]}
+      - {name: maximum_drawdown, data_type: double precision, description: Most negative peak-relative drawdown, data_tests: [not_null]}
+      - {name: maximum_drawdown_magnitude, data_type: double precision, description: Positive magnitude of maximum drawdown, data_tests: [not_null]}
+      - {name: maximum_drawdown_peak_date, data_type: date, description: Observed peak date preceding the maximum drawdown; null when initial capital is the peak.}
+      - {name: maximum_drawdown_trough_date, data_type: date, description: Date on which maximum drawdown is first attained, data_tests: [not_null]}
+
+  - name: agg_hourly_strategy_yearly
+    description: Contracted year-local performance and coverage by UTC strategy hour with annual equity resets.
+    config:
+      contract: {enforced: true}
+    columns:
+      - {name: symbol, data_type: text, description: Market symbol, data_tests: [not_null]}
+      - {name: trade_year, data_type: integer, description: UTC calendar year, data_tests: [not_null]}
+      - {name: entry_hour_utc, data_type: integer, description: UTC strategy hour, data_tests: [not_null]}
+      - {name: requested_period_count, data_type: bigint, description: Requested candidates in the year, data_tests: [not_null]}
+      - {name: outside_source_period_count, data_type: bigint, description: Candidates outside source coverage, data_tests: [not_null]}
+      - {name: in_source_period_count, data_type: bigint, description: Candidates inside source coverage, data_tests: [not_null]}
+      - {name: eligible_trade_count, data_type: bigint, description: Eligible annual trades, data_tests: [not_null]}
+      - {name: excluded_in_source_period_count, data_type: bigint, description: Rejected in-source annual candidates, data_tests: [not_null]}
+      - {name: coverage_rate, data_type: double precision, description: Eligible annual trades divided by in-source candidates, data_tests: [not_null]}
+      - {name: candidate_start_date, data_type: date, description: First in-source candidate date in the year, data_tests: [not_null]}
+      - {name: candidate_end_date, data_type: date, description: Last in-source candidate date in the year, data_tests: [not_null]}
+      - {name: evaluated_start_date, data_type: date, description: First eligible date in the year, data_tests: [not_null]}
+      - {name: evaluated_end_date, data_type: date, description: Last eligible date in the year, data_tests: [not_null]}
+      - {name: mean_trade_return, data_type: double precision, description: Mean eligible annual trade return, data_tests: [not_null]}
+      - {name: median_trade_return, data_type: double precision, description: Median eligible annual trade return, data_tests: [not_null]}
+      - {name: trade_return_stddev, data_type: double precision, description: Annual sample standard deviation, data_tests: [not_null]}
+      - {name: positive_trade_rate, data_type: double precision, description: Annual share of positive eligible trades, data_tests: [not_null]}
+      - {name: worst_trade_return, data_type: double precision, description: Worst annual eligible trade return, data_tests: [not_null]}
+      - {name: best_trade_return, data_type: double precision, description: Best annual eligible trade return, data_tests: [not_null]}
+      - {name: final_equity, data_type: double precision, description: Terminal equity with annual reset, data_tests: [not_null]}
+      - {name: compounded_return, data_type: double precision, description: Annual terminal equity minus one, data_tests: [not_null]}
+      - {name: maximum_drawdown, data_type: double precision, description: Year-local maximum drawdown, data_tests: [not_null]}
+      - {name: maximum_drawdown_magnitude, data_type: double precision, description: Positive year-local drawdown magnitude, data_tests: [not_null]}
+    data_tests:
+      - dbt_expectations.expect_compound_columns_to_be_unique:
+          arguments:
+            column_list: [symbol, trade_year, entry_hour_utc]
+
+  - name: rpt_assignment_answers
+    description: Deterministic two-row report answering the assignment questions from the governed summary.
+    config:
+      contract: {enforced: true}
+    columns:
+      - {name: answer_order, data_type: integer, description: Stable display order, data_tests: [not_null, unique]}
+      - {name: question, data_type: text, description: Assignment question label, data_tests: [not_null, unique]}
+      - {name: entry_hour_utc, data_type: integer, description: Winning UTC hour, data_tests: [not_null]}
+      - {name: metric_pct, data_type: double precision, description: Winning return or loss expressed as percentage points, data_tests: [not_null]}
+      - {name: evaluated_start_date, data_type: date, description: First eligible date for the winner, data_tests: [not_null]}
+      - {name: evaluated_end_date, data_type: date, description: Last eligible date for the winner, data_tests: [not_null]}
+      - {name: valid_trade_days, data_type: bigint, description: Winner eligible-trade count, data_tests: [not_null]}
+      - {name: excluded_incomplete_periods, data_type: bigint, description: Winner excluded in-source candidate count, data_tests: [not_null]}
+
+exposures:
+  - name: hourly_strategy_analysis
+    label: Hourly Strategy Analysis
+    type: analysis
+    maturity: medium
+    description: Final analyst-facing comparison of hourly BTC/USDT strategies.
+    depends_on:
+      - ref('agg_hourly_strategy_summary')
+      - ref('agg_hourly_strategy_yearly')
+    owner:
+      name: Candidate
+      email: candidate@example.com

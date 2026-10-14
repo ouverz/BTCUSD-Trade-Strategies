@@ -1,0 +1,35 @@
+version: 2
+models:
+  - name: stg_binance__btc_usdt_1s
+    description: One-to-one source-conformed Binance candles; grain is one physically delivered CSV row and duplicates are retained.
+    columns:
+      - name: symbol
+        description: Fixed BTCUSDT market symbol.
+      - name: opened_at_utc
+        description: UTC candle opening timestamp stored without a time-zone offset for indexed source access.
+        data_tests: [not_null]
+      - name: closed_at_utc
+        description: UTC candle closing timestamp stored without a time-zone offset.
+      - name: open_price
+        description: Opening BTC/USDT price.
+      - name: high_price
+        description: Highest BTC/USDT price.
+      - name: low_price
+        description: Lowest BTC/USDT price.
+      - name: close_price
+        description: Closing BTC/USDT price.
+      - name: base_asset_volume
+        description: BTC volume.
+      - name: quote_asset_volume
+        description: USDT volume.
+      - name: number_of_trades
+        description: Number of trades in the candle.
+      - name: taker_buy_base_asset_volume
+        description: Taker-buy BTC volume.
+      - name: taker_buy_quote_asset_volume
+        description: Taker-buy USDT volume.
+      - name: ignored_value
+        description: Unused Binance compatibility value retained for traceability.
+      - name: loaded_at
+        description: Raw ingestion timestamp.
+

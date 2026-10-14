@@ -1,0 +1,38 @@
+version: 2
+sources:
+  - name: raw
+    description: Raw Binance BTC/USDT one-second market data loaded without business transformations.
+    schema: raw
+    tables:
+      - name: binance_btc_usdt_1s
+        description: Exact recognized 12-column Binance CSV plus ingestion timestamp.
+        columns:
+          - name: open_time
+            description: Start timestamp of the one-second candle, interpreted as UTC.
+            data_tests: [not_null]
+          - name: open
+            description: Opening BTC/USDT price.
+            data_tests: [not_null]
+          - name: high
+            description: Highest BTC/USDT price.
+          - name: low
+            description: Lowest BTC/USDT price.
+          - name: close
+            description: Closing BTC/USDT price.
+          - name: volume
+            description: BTC base-asset volume.
+          - name: close_time
+            description: Candle close timestamp, interpreted as UTC.
+          - name: quote_asset_volume
+            description: USDT quote-asset volume.
+          - name: number_of_trades
+            description: Exchange-reported trade count.
+          - name: taker_buy_base_asset_volume
+            description: Taker-buy BTC volume.
+          - name: taker_buy_quote_asset_volume
+            description: Taker-buy USDT volume.
+          - name: ignore
+            description: Unused Binance compatibility field.
+          - name: loaded_at
+            description: Timestamp when PostgreSQL loaded the row.
+

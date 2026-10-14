@@ -1,0 +1,201 @@
+version: 2
+
+models:
+  - name: int_strategy_periods
+    description: Every requested UTC date and hour with exact expected endpoints and source-window classification.
+    columns:
+      - {name: symbol, description: Fixed BTCUSDT market symbol.}
+      - {name: trade_date, description: Requested UTC trade date.}
+      - {name: entry_hour_utc, description: Requested UTC strategy hour.}
+      - {name: expected_entry_at_utc, description: Exact expected first-second opening timestamp.}
+      - {name: expected_exit_at_utc, description: Exact expected final-second opening timestamp.}
+      - {name: source_min_opened_at_utc, description: Earliest source candle opening timestamp.}
+      - {name: source_max_opened_at_utc, description: Latest source candle opening timestamp.}
+      - {name: is_within_source_window, description: True when both expected endpoints fall inside the source timestamp range.}
+    data_tests:
+      - dbt_expectations.expect_compound_columns_to_be_unique:
+          arguments:
+            column_list: [symbol, trade_date, entry_hour_utc]
+
+  - name: int_strategy_endpoint_observations
+    description: Materialized exact endpoint observations and duplicate diagnostics; prices resolve only when all relevant copies agree and exit copies are well formed.
+    columns:
+      - {name: symbol, description: Fixed BTCUSDT market symbol.}
+      - {name: trade_date, description: Requested UTC trade date.}
+      - {name: entry_hour_utc, description: Requested UTC strategy hour.}
+      - {name: expected_entry_at_utc, description: Exact expected entry timestamp.}
+      - {name: expected_exit_at_utc, description: Exact expected exit-candle opening timestamp.}
+      - {name: source_min_opened_at_utc, description: Earliest source candle opening timestamp.}
+      - {name: source_max_opened_at_utc, description: Latest source candle opening timestamp.}
+      - {name: is_within_source_window, description: Whether the complete candidate lies inside source coverage.}
+      - {name: entry_price, description: Exact entry open price, populated only when all copies agree on one value.}
+      - {name: exit_price, description: Exact exit close price, populated only when valid copies agree and no malformed exit copy exists.}
+      - {name: entry_row_count, description: Physical source rows at the expected entry timestamp.}
+      - {name: entry_price_version_count, description: Distinct opening prices at the entry timestamp.}
+      - {name: exit_row_count, description: Physical source rows at the expected exit timestamp.}
+      - {name: exit_price_version_count, description: Distinct closing prices among valid exit candles.}
+      - {name: invalid_exit_close_time_count, description: Exit rows whose close timestamp is not 999 milliseconds after open.}
+    data_tests:
+      - dbt_expectations.expect_compound_columns_to_be_unique:
+          arguments:
+            column_list: [symbol, trade_date, entry_hour_utc]
+
+  - name: int_strategy_trades
+    description: Every candidate strategy trade with endpoint diagnostics, eligibility, exclusion reason, and return.
+    columns:
+      - {name: symbol, description: Fixed BTCUSDT market symbol.}
+      - {name: trade_date, description: Requested UTC trade date.}
+      - {name: entry_hour_utc, description: Requested UTC strategy hour.}
+      - {name: expected_entry_at_utc, description: Exact expected entry timestamp.}
+      - {name: expected_exit_at_utc, description: Exact expected exit-candle opening timestamp.}
+      - {name: source_min_opened_at_utc, description: Earliest source candle opening timestamp.}
+      - {name: source_max_opened_at_utc, description: Latest source candle opening timestamp.}
+      - {name: is_within_source_window, description: Whether the complete candidate lies inside source coverage.}
+      - {name: entry_price, description: Exact first-second opening price; null when duplicate values conflict.}
+      - {name: exit_price, description: Exact valid final-second closing price; null when values conflict or an exit copy is malformed.}
+      - {name: entry_row_count, description: Physical source entry rows.}
+      - {name: entry_price_version_count, description: Distinct entry price versions.}
+      - {name: exit_row_count, description: Physical source exit rows.}
+      - {name: exit_price_version_count, description: Distinct valid exit price versions.}
+      - {name: invalid_exit_close_time_count, description: Malformed physical exit rows.}
+      - {name: is_missing_entry, description: Whether the exact entry observation is absent.}
+      - {name: has_conflicting_entry, description: Whether distinct entry prices conflict.}
+      - {name: has_nonpositive_entry, description: Whether the resolved entry price is nonpositive.}
+      - {name: is_missing_exit, description: Whether the exact exit observation is absent.}
+      - {name: has_malformed_exit, description: Whether any exit row has an invalid close timestamp.}
+      - {name: has_conflicting_exit, description: Whether distinct valid exit prices conflict.}
+      - {name: has_nonpositive_exit, description: Whether the resolved exit price is nonpositive.}
+      - name: trade_status
+        description: Deterministic primary candidate status.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - outside_source_window
+                  - missing_entry
+                  - conflicting_entry
+                  - nonpositive_entry
+                  - missing_exit
+                  - malformed_exit_close_time
+                  - conflicting_exit
+                  - nonpositive_exit
+                  - eligible
+      - {name: exclusion_reason, description: Primary exclusion reason, null for eligible trades.}
+      - {name: is_eligible_trade, description: Whether the candidate may enter performance calculations.}
+      - {name: trade_factor, description: Exit price divided by entry price for an eligible trade.}
+      - {name: trade_return, description: One-hour eligible trade return.}
+    data_tests:
+      - dbt_expectations.expect_compound_columns_to_be_unique:
+          arguments:
+            column_list: [symbol, trade_date, entry_hour_utc]
+
+  - name: int_strategy_equity
+    description: Chronological compounded equity and peak-to-trough drawdown for eligible trades by UTC hour.
+    columns:
+      - {name: symbol, description: Fixed BTCUSDT market symbol.}
+      - {name: trade_date, description: Eligible trade date.}
+      - {name: entry_hour_utc, description: UTC strategy hour.}
+      - {name: trade_sequence, description: Chronological sequence number within the hourly strategy.}
+      - {name: entry_price, description: Executed entry price.}
+      - {name: exit_price, description: Executed exit price.}
+      - {name: trade_factor, description: Eligible trade equity multiplier.}
+      - {name: trade_return, description: Eligible one-hour trade return.}
+      - {name: equity, description: Compounded wealth from initial equity of one.}
+      - {name: running_peak, description: Highest equity to date, floored at initial equity.}
+      - {name: running_peak_date, description: Date of the latest applicable observed equity peak; null when the peak remains initial capital.}
+      - {name: cumulative_return, description: Compounded return since inception.}
+      - {name: drawdown, description: Current equity return relative to the running peak.}
+    data_tests:
+      - dbt_expectations.expect_compound_columns_to_be_unique:
+          arguments:
+            column_list: [symbol, trade_date, entry_hour_utc]
+
+unit_tests:
+  - name: endpoint_lookup_uses_exact_prices
+    description: Endpoint resolution uses the first-second open and valid final-second close only.
+    model: int_strategy_endpoint_observations
+    given:
+      - input: ref('int_strategy_periods')
+        rows:
+          - {symbol: BTCUSDT, trade_date: '2024-01-01', entry_hour_utc: 9, expected_entry_at_utc: '2024-01-01 09:00:00', expected_exit_at_utc: '2024-01-01 09:59:59', source_min_opened_at_utc: '2024-01-01 00:00:00', source_max_opened_at_utc: '2024-01-01 23:59:59', is_within_source_window: true}
+      - input: ref('stg_binance__btc_usdt_1s')
+        rows:
+          - {opened_at_utc: '2024-01-01 09:00:00', closed_at_utc: '2024-01-01 09:00:00.999', open_price: 100, close_price: 999}
+          - {opened_at_utc: '2024-01-01 09:00:00', closed_at_utc: '2024-01-01 09:00:00.999', open_price: 100, close_price: 999}
+          - {opened_at_utc: '2024-01-01 09:30:00', closed_at_utc: '2024-01-01 09:30:00.999', open_price: 500, close_price: 500}
+          - {opened_at_utc: '2024-01-01 09:59:59', closed_at_utc: '2024-01-01 09:59:59.999', open_price: 109, close_price: 110}
+          - {opened_at_utc: '2024-01-01 09:59:59', closed_at_utc: '2024-01-01 09:59:59.999', open_price: 109, close_price: 110}
+    expect:
+      rows:
+        - {trade_date: '2024-01-01', entry_hour_utc: 9, entry_price: 100, exit_price: 110, entry_row_count: 2, entry_price_version_count: 1, exit_row_count: 2, exit_price_version_count: 1, invalid_exit_close_time_count: 0}
+
+  - name: conflicting_and_nearby_endpoints_are_not_resolved
+    description: Conflicting prices and non-exact timestamps never become selected endpoint prices.
+    model: int_strategy_endpoint_observations
+    given:
+      - input: ref('int_strategy_periods')
+        rows:
+          - {symbol: BTCUSDT, trade_date: '2024-01-01', entry_hour_utc: 10, expected_entry_at_utc: '2024-01-01 10:00:00', expected_exit_at_utc: '2024-01-01 10:59:59', source_min_opened_at_utc: '2024-01-01 00:00:00', source_max_opened_at_utc: '2024-01-01 23:59:59', is_within_source_window: true}
+          - {symbol: BTCUSDT, trade_date: '2024-01-01', entry_hour_utc: 11, expected_entry_at_utc: '2024-01-01 11:00:00', expected_exit_at_utc: '2024-01-01 11:59:59', source_min_opened_at_utc: '2024-01-01 00:00:00', source_max_opened_at_utc: '2024-01-01 23:59:59', is_within_source_window: true}
+          - {symbol: BTCUSDT, trade_date: '2024-01-01', entry_hour_utc: 12, expected_entry_at_utc: '2024-01-01 12:00:00', expected_exit_at_utc: '2024-01-01 12:59:59', source_min_opened_at_utc: '2024-01-01 00:00:00', source_max_opened_at_utc: '2024-01-01 23:59:59', is_within_source_window: true}
+      - input: ref('stg_binance__btc_usdt_1s')
+        rows:
+          - {opened_at_utc: '2024-01-01 10:00:00', closed_at_utc: '2024-01-01 10:00:00.999', open_price: 100, close_price: 100}
+          - {opened_at_utc: '2024-01-01 10:00:00', closed_at_utc: '2024-01-01 10:00:00.999', open_price: 101, close_price: 100}
+          - {opened_at_utc: '2024-01-01 10:59:59', closed_at_utc: '2024-01-01 10:59:59.999', open_price: 109, close_price: 110}
+          - {opened_at_utc: '2024-01-01 11:00:00.001', closed_at_utc: '2024-01-01 11:00:01.000', open_price: 105, close_price: 106}
+          - {opened_at_utc: '2024-01-01 11:59:59', closed_at_utc: '2024-01-01 11:59:59.999', open_price: 109, close_price: 110}
+          - {opened_at_utc: '2024-01-01 12:00:00', closed_at_utc: '2024-01-01 12:00:00.999', open_price: 100, close_price: 100}
+          - {opened_at_utc: '2024-01-01 12:59:59', closed_at_utc: '2024-01-01 12:59:59.999', open_price: 109, close_price: 110}
+          - {opened_at_utc: '2024-01-01 12:59:59', closed_at_utc: '2024-01-01 12:59:59.999', open_price: 109, close_price: 111}
+    expect:
+      rows:
+        - {trade_date: '2024-01-01', entry_hour_utc: 10, entry_price: null, exit_price: 110, entry_row_count: 2, entry_price_version_count: 2, exit_row_count: 1, exit_price_version_count: 1, invalid_exit_close_time_count: 0}
+        - {trade_date: '2024-01-01', entry_hour_utc: 11, entry_price: null, exit_price: 110, entry_row_count: 0, entry_price_version_count: 0, exit_row_count: 1, exit_price_version_count: 1, invalid_exit_close_time_count: 0}
+        - {trade_date: '2024-01-01', entry_hour_utc: 12, entry_price: 100, exit_price: null, entry_row_count: 1, entry_price_version_count: 1, exit_row_count: 2, exit_price_version_count: 2, invalid_exit_close_time_count: 0}
+
+  - name: malformed_exit_copy_prevents_price_resolution
+    description: An otherwise valid exit is unresolved when any physical copy has malformed close timing.
+    model: int_strategy_endpoint_observations
+    given:
+      - input: ref('int_strategy_periods')
+        rows:
+          - {symbol: BTCUSDT, trade_date: '2024-01-01', entry_hour_utc: 9, expected_entry_at_utc: '2024-01-01 09:00:00', expected_exit_at_utc: '2024-01-01 09:59:59', source_min_opened_at_utc: '2024-01-01 00:00:00', source_max_opened_at_utc: '2024-01-01 23:59:59', is_within_source_window: true}
+      - input: ref('stg_binance__btc_usdt_1s')
+        rows:
+          - {opened_at_utc: '2024-01-01 09:00:00', closed_at_utc: '2024-01-01 09:00:00.999', open_price: 100, close_price: 100}
+          - {opened_at_utc: '2024-01-01 09:59:59', closed_at_utc: '2024-01-01 09:59:59.999', open_price: 109, close_price: 110}
+          - {opened_at_utc: '2024-01-01 09:59:59', closed_at_utc: '2024-01-01 09:59:59.500', open_price: 109, close_price: 110}
+    expect:
+      rows:
+        - {trade_date: '2024-01-01', entry_hour_utc: 9, entry_price: 100, exit_price: null, entry_row_count: 1, entry_price_version_count: 1, exit_row_count: 2, exit_price_version_count: 1, invalid_exit_close_time_count: 1}
+
+  - name: trade_status_controls_eligibility
+    description: Complete positive endpoints are eligible while conflicts remain auditable and excluded.
+    model: int_strategy_trades
+    given:
+      - input: ref('int_strategy_endpoint_observations')
+        rows:
+          - {symbol: BTCUSDT, trade_date: '2024-01-01', entry_hour_utc: 9, is_within_source_window: true, entry_price: 100, exit_price: 110, entry_row_count: 2, entry_price_version_count: 1, exit_row_count: 1, exit_price_version_count: 1, invalid_exit_close_time_count: 0}
+          - {symbol: BTCUSDT, trade_date: '2024-01-01', entry_hour_utc: 10, is_within_source_window: true, entry_price: null, exit_price: 110, entry_row_count: 2, entry_price_version_count: 2, exit_row_count: 1, exit_price_version_count: 1, invalid_exit_close_time_count: 0}
+          - {symbol: BTCUSDT, trade_date: '2024-01-01', entry_hour_utc: 11, is_within_source_window: true, entry_price: 0, exit_price: 110, entry_row_count: 1, entry_price_version_count: 1, exit_row_count: 1, exit_price_version_count: 1, invalid_exit_close_time_count: 0}
+          - {symbol: BTCUSDT, trade_date: '2024-01-01', entry_hour_utc: 12, is_within_source_window: true, entry_price: 100, exit_price: 0, entry_row_count: 1, entry_price_version_count: 1, exit_row_count: 1, exit_price_version_count: 1, invalid_exit_close_time_count: 0}
+    expect:
+      rows:
+        - {trade_date: '2024-01-01', entry_hour_utc: 9, trade_status: eligible, exclusion_reason: null, is_eligible_trade: true, trade_factor: '1.1000000000000000', trade_return: '0.1000000000000000'}
+        - {trade_date: '2024-01-01', entry_hour_utc: 10, trade_status: conflicting_entry, exclusion_reason: conflicting_entry, is_eligible_trade: false, trade_factor: null, trade_return: null}
+        - {trade_date: '2024-01-01', entry_hour_utc: 11, trade_status: nonpositive_entry, exclusion_reason: nonpositive_entry, is_eligible_trade: false, trade_factor: null, trade_return: null}
+        - {trade_date: '2024-01-01', entry_hour_utc: 12, trade_status: nonpositive_exit, exclusion_reason: nonpositive_exit, is_eligible_trade: false, trade_factor: null, trade_return: null}
+
+  - name: two_trade_compounding_includes_initial_equity
+    description: Equity compounds eligible trades and measures an early loss against initial capital.
+    model: int_strategy_equity
+    given:
+      - input: ref('int_strategy_trades')
+        rows:
+          - {symbol: BTCUSDT, trade_date: '2024-01-01', entry_hour_utc: 9, entry_price: 100, exit_price: 90, trade_factor: 0.9, trade_return: -0.1, is_eligible_trade: true}
+          - {symbol: BTCUSDT, trade_date: '2024-01-02', entry_hour_utc: 9, entry_price: 100, exit_price: 200, trade_factor: 2.0, trade_return: 1.0, is_eligible_trade: true}
+    expect:
+      rows:
+        - {trade_date: '2024-01-01', entry_hour_utc: 9, trade_sequence: 1, equity: 0.9, running_peak: 1.0, running_peak_date: null, cumulative_return: -0.09999999999999998, drawdown: -0.09999999999999998}
+        - {trade_date: '2024-01-02', entry_hour_utc: 9, trade_sequence: 2, equity: 1.8, running_peak: 1.8, running_peak_date: '2024-01-02', cumulative_return: 0.8, drawdown: 0.0}

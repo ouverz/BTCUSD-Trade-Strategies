@@ -1,66 +1,47 @@
-name: dbt quality
+name: pipeline quality
 
 on:
   push:
   pull_request:
 
 jobs:
-  dbt-quality:
+  pipeline-quality:
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:17.11-alpine
-        env:
-          POSTGRES_DB: bitcoin
-          POSTGRES_USER: bitcoin
-          POSTGRES_PASSWORD: bitcoin
-          TZ: UTC
-          PGTZ: UTC
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U bitcoin -d bitcoin"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 20
-    env:
-      DBT_PROFILES_DIR: ${{ github.workspace }}
-      POSTGRES_HOST: localhost
-      POSTGRES_PORT: 5432
-      POSTGRES_DB: bitcoin
-      POSTGRES_USER: bitcoin
-      POSTGRES_PASSWORD: bitcoin
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install UV and PostgreSQL client
+      - name: Validate shell syntax and reject invalid calendar dates
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install uv
-          uv sync --no-dev
-          sudo apt-get update
-          sudo apt-get install --yes postgresql-client
-      - name: Create deterministic two-day source fixture
-        run: PGPASSWORD="$POSTGRES_PASSWORD" psql -h "$POSTGRES_HOST" -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -f tests/fixtures/ci_setup.sql
-      - name: Run source-quality audit
-        run: PGPASSWORD="$POSTGRES_PASSWORD" psql -h "$POSTGRES_HOST" -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -f scripts/source_quality_audit.sql
-      - name: Install locked dbt packages
-        run: uv run dbt deps
-      - name: Build models and run tests
-        run: uv run dbt build --no-partial-parse
-      - name: Generate docs and run governance checks
-        run: |
-          uv run dbt docs generate
-          uv run python scripts/governance_check.py
+          bash -n run.sh
+          if ./run.sh --start-date 2024-02-30; then
+            echo "Expected an invalid calendar date to be rejected." >&2
+            exit 1
+          else
+            status=$?
+            test "$status" -eq 2
+          fi
+      - name: Generate deterministic two-day CSV fixture
+        run: python scripts/create_ci_fixture.py "$RUNNER_TEMP/ci_candles.csv"
+      - name: Run the full ingestion and dbt workflow
+        env:
+          DATA_FILE: ${{ runner.temp }}/ci_candles.csv
+          POSTGRES_PASSWORD: ci-only-password
+        run: ./run.sh --reload
+      - name: Assert smoke-test row counts and outcomes
+        run: docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U bitcoin -d bitcoin -f /dev/stdin < tests/fixtures/assert_ci_results.sql
       - name: Preserve dbt artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: dbt-quality-artifacts
+          name: pipeline-quality-artifacts
           if-no-files-found: ignore
           path: |
             target/manifest.json
             target/run_results.json
+            target/build_run_results.json
             logs/dbt.log
+      - name: Stop Compose services
+        if: always()
+        run: docker compose down --remove-orphans

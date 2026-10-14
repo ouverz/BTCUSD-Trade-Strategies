@@ -1,0 +1,28 @@
+.env
+*.csv
+target/
+logs/
+dbt_packages/
+.user.yml
+dbt_internal_packages/
+postgres_data*/
+.venv/
+__pycache__/
+.DS_Store
+
+# Internal working notes, not part of the hiring-manager deliverable.
+/AGENTS.md
+/overview.md
+/Research_Analysis.md
+/review_chapter_2.md
+/Version 3.md
+/version 4.md
+/docs/
+
+# Local screenshots and other image assets are not required by the submission.
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.svg

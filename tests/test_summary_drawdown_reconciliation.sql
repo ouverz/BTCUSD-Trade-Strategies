@@ -7,7 +7,7 @@ with fact_drawdown as (
             as maximum_drawdown_trough_date,
         (array_agg(running_peak_date order by drawdown, trade_date))[1]
             as maximum_drawdown_peak_date
-    from {{ ref('fct_hourly_strategy_trades') }}
+    from {{ ref('fct_hourly_strategy_candidates') }}
     where is_eligible_trade
     group by symbol, entry_hour_utc
 )

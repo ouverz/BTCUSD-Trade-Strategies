@@ -5,6 +5,7 @@ with return_winner as (
             order by compounded_return desc, entry_hour_utc
         ) as result_rank
     from {{ ref('agg_hourly_strategy_summary') }}
+    where eligible_trade_count > 0
 ),
 loss_winner as (
     select
@@ -13,6 +14,7 @@ loss_winner as (
             order by maximum_drawdown_magnitude, compounded_return desc, entry_hour_utc
         ) as result_rank
     from {{ ref('agg_hourly_strategy_summary') }}
+    where eligible_trade_count > 0
 ),
 expected as (
     select

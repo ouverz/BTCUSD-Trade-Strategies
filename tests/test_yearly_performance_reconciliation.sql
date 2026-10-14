@@ -9,7 +9,7 @@ with yearly_equity as (
             order by trade_date
             rows between unbounded preceding and current row
         )) as equity
-    from {{ ref('fct_hourly_strategy_trades') }}
+    from {{ ref('fct_hourly_strategy_candidates') }}
     where is_eligible_trade
 ),
 yearly_drawdown as (

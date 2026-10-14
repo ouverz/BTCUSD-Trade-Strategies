@@ -1,5 +1,5 @@
 select *
-from {{ ref('fct_hourly_strategy_trades') }}
+from {{ ref('fct_hourly_strategy_candidates') }}
 where not is_eligible_trade
   and (
       trade_factor is not null

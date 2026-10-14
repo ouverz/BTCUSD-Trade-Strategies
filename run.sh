@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ -f .env ]]; then
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+cd "$script_dir"
+
+if [[ -f "$script_dir/.env" ]]; then
     set -a
     # shellcheck disable=SC1091
-    source .env
+    source "$script_dir/.env"
     set +a
 fi
 
@@ -168,6 +171,11 @@ dbt_vars="{start_date: ${start_date:-null}, end_date: ${end_date:-null}}"
 
 hour_predicate='true'
 [[ "$hour" == all ]] || hour_predicate="entry_hour_utc = $hour"
-"${psql_cmd[@]}" -P pager=off -c "select question, entry_hour_utc, round(metric_pct::numeric, 6) as metric_pct, evaluated_start_date, evaluated_end_date, valid_trade_days, excluded_incomplete_periods from analytics_marts.rpt_assignment_answers where $hour_predicate order by answer_order"
+answer_count="$("${psql_cmd[@]}" -Atc 'select count(*) from analytics_marts.rpt_assignment_answers')"
+if [[ "$answer_count" == 0 ]]; then
+    echo "No eligible trades in the requested date range; no assignment winners are reported."
+else
+    "${psql_cmd[@]}" -P pager=off -c "select question, entry_hour_utc, round(metric_pct::numeric, 6) as metric_pct, evaluated_start_date, evaluated_end_date, valid_trade_days, excluded_incomplete_periods from analytics_marts.rpt_assignment_answers where $hour_predicate order by answer_order"
+fi
 "${psql_cmd[@]}" -P pager=off -c "select sum(requested_period_count) as requested_periods, sum(outside_source_period_count) as outside_source_periods, sum(in_source_period_count) as in_source_periods, sum(eligible_trade_count) as eligible_trades, sum(excluded_in_source_period_count) as excluded_in_source_periods, sum(missing_entry_period_count) as missing_entry_periods, sum(missing_exit_period_count) as missing_exit_periods, sum(conflicting_entry_period_count) as conflicting_entry_periods, sum(conflicting_exit_period_count) as conflicting_exit_periods, sum(malformed_exit_period_count) as malformed_exit_periods, sum(deduplicated_entry_period_count) as deduplicated_entry_periods, sum(deduplicated_exit_period_count) as deduplicated_exit_periods from analytics_marts.agg_hourly_strategy_summary"
 

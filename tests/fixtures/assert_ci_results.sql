@@ -13,13 +13,13 @@ begin
         raise exception 'CI fixture should ingest 96 physical candle rows';
     end if;
 
-    if (select count(*) from analytics_marts.fct_hourly_strategy_trades) <> 48 then
+    if (select count(*) from analytics_marts.fct_hourly_strategy_candidates) <> 48 then
         raise exception 'CI fixture should create 48 date-hour candidates';
     end if;
 
     if (
         select count(*)
-        from analytics_marts.fct_hourly_strategy_trades
+        from analytics_marts.fct_hourly_strategy_candidates
         where is_eligible_trade
     ) <> 48 then
         raise exception 'All 48 synthetic date-hour candidates should be eligible';

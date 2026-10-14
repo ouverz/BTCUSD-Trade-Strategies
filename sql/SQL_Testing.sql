@@ -17,7 +17,7 @@ select
     count(*) as excluded_candidates,
     min(trade_date) as first_excluded_date,
     max(trade_date) as last_excluded_date
-from analytics_marts.fct_hourly_strategy_trades
+from analytics_marts.fct_hourly_strategy_candidates
 where is_within_source_window
   and not is_eligible_trade
 group by entry_hour_utc, trade_status
@@ -33,7 +33,7 @@ select
     entry_row_count,
     exit_row_count,
     invalid_exit_close_time_count
-from analytics_marts.fct_hourly_strategy_trades
+from analytics_marts.fct_hourly_strategy_candidates
 where is_within_source_window
   and not is_eligible_trade
 order by trade_date, entry_hour_utc;
@@ -69,7 +69,7 @@ with ranked as (
     	PARTITION BY entry_hour_utc
     	order by trade_return, trade_date
     ) as worst_rank
-	from analytics_marts.fct_hourly_strategy_trades
+	from analytics_marts.fct_hourly_strategy_candidates
 	where is_eligible_trade
 	and entry_hour_utc in (21,22)
 )
@@ -127,7 +127,7 @@ with ranked as (
 		partition by entry_hour_utc
 		order by trade_return desc, trade_date    
     ) as best_rank
-	from analytics_marts.fct_hourly_strategy_trades
+	from analytics_marts.fct_hourly_strategy_candidates
 	where is_eligible_trade
 	and entry_hour_utc in (21,22)
 )
@@ -160,7 +160,7 @@ select
     round((percentile_cont(0.50) within group (order by trade_return))::numeric * 100, 4) as p50_pct,
     round((percentile_cont(0.75) within group (order by trade_return))::numeric * 100, 4) as p75_pct,
     round((percentile_cont(0.95) within group (order by trade_return))::numeric * 100, 4) as p95_pct
-from analytics_marts.fct_hourly_strategy_trades
+from analytics_marts.fct_hourly_strategy_candidates
 where is_eligible_trade
   and entry_hour_utc in (21, 22)
 group by entry_hour_utc
@@ -215,7 +215,7 @@ with hour_trades as (
         trade_return,
         equity,
         drawdown
-    from analytics_marts.fct_hourly_strategy_trades
+    from analytics_marts.fct_hourly_strategy_candidates
     where is_eligible_trade
       and entry_hour_utc = 22
 ),
@@ -311,7 +311,7 @@ select
     exit_rows.raw_close_price,
     exit_rows.malformed_close_rows
 from samples s
-join analytics_marts.fct_hourly_strategy_trades f
+join analytics_marts.fct_hourly_strategy_candidates f
   on f.trade_date = s.trade_date
  and f.entry_hour_utc = s.entry_hour_utc
 left join lateral (
@@ -359,7 +359,7 @@ select
     count(*) as excluded_candidates,
     min(trade_date) as first_excluded_date,
     max(trade_date) as last_excluded_date
-from analytics_marts.fct_hourly_strategy_trades
+from analytics_marts.fct_hourly_strategy_candidates
 where is_within_source_window
   and not is_eligible_trade
 group by entry_hour_utc, trade_status
@@ -375,7 +375,7 @@ select
     entry_row_count,
     exit_row_count,
     invalid_exit_close_time_count
-from analytics_marts.fct_hourly_strategy_trades
+from analytics_marts.fct_hourly_strategy_candidates
 where is_within_source_window
   and not is_eligible_trade
 order by trade_date, entry_hour_utc;
@@ -411,7 +411,7 @@ with ranked as (
     	PARTITION BY entry_hour_utc
     	order by trade_return, trade_date
     ) as worst_rank
-	from analytics_marts.fct_hourly_strategy_trades
+	from analytics_marts.fct_hourly_strategy_candidates
 	where is_eligible_trade
 	and entry_hour_utc in (21,22)
 )
@@ -469,7 +469,7 @@ with ranked as (
 		partition by entry_hour_utc
 		order by trade_return desc, trade_date    
     ) as best_rank
-	from analytics_marts.fct_hourly_strategy_trades
+	from analytics_marts.fct_hourly_strategy_candidates
 	where is_eligible_trade
 	and entry_hour_utc in (21,22)
 )
@@ -502,7 +502,7 @@ select
     round((percentile_cont(0.50) within group (order by trade_return))::numeric * 100, 4) as p50_pct,
     round((percentile_cont(0.75) within group (order by trade_return))::numeric * 100, 4) as p75_pct,
     round((percentile_cont(0.95) within group (order by trade_return))::numeric * 100, 4) as p95_pct
-from analytics_marts.fct_hourly_strategy_trades
+from analytics_marts.fct_hourly_strategy_candidates
 where is_eligible_trade
   and entry_hour_utc in (21, 22)
 group by entry_hour_utc
@@ -557,7 +557,7 @@ with hour_trades as (
         trade_return,
         equity,
         drawdown
-    from analytics_marts.fct_hourly_strategy_trades
+    from analytics_marts.fct_hourly_strategy_candidates
     where is_eligible_trade
       and entry_hour_utc = 22
 ),
@@ -653,7 +653,7 @@ select
     exit_rows.raw_close_price,
     exit_rows.malformed_close_rows
 from samples s
-join analytics_marts.fct_hourly_strategy_trades f
+join analytics_marts.fct_hourly_strategy_candidates f
   on f.trade_date = s.trade_date
  and f.entry_hour_utc = s.entry_hour_utc
 left join lateral (
@@ -700,7 +700,7 @@ select
     count(*) as excluded_candidates,
     min(trade_date) as first_excluded_date,
     max(trade_date) as last_excluded_date
-from analytics_marts.fct_hourly_strategy_trades
+from analytics_marts.fct_hourly_strategy_candidates
 where is_within_source_window
   and not is_eligible_trade
 group by entry_hour_utc, trade_status
@@ -716,7 +716,7 @@ select
     entry_row_count,
     exit_row_count,
     invalid_exit_close_time_count
-from analytics_marts.fct_hourly_strategy_trades
+from analytics_marts.fct_hourly_strategy_candidates
 where is_within_source_window
   and not is_eligible_trade
 order by trade_date, entry_hour_utc;
@@ -752,7 +752,7 @@ with ranked as (
     	PARTITION BY entry_hour_utc
     	order by trade_return, trade_date
     ) as worst_rank
-	from analytics_marts.fct_hourly_strategy_trades
+	from analytics_marts.fct_hourly_strategy_candidates
 	where is_eligible_trade
 	and entry_hour_utc in (21,22)
 )
@@ -810,7 +810,7 @@ with ranked as (
 		partition by entry_hour_utc
 		order by trade_return desc, trade_date    
     ) as best_rank
-	from analytics_marts.fct_hourly_strategy_trades
+	from analytics_marts.fct_hourly_strategy_candidates
 	where is_eligible_trade
 	and entry_hour_utc in (21,22)
 )
@@ -843,7 +843,7 @@ select
     round((percentile_cont(0.50) within group (order by trade_return))::numeric * 100, 4) as p50_pct,
     round((percentile_cont(0.75) within group (order by trade_return))::numeric * 100, 4) as p75_pct,
     round((percentile_cont(0.95) within group (order by trade_return))::numeric * 100, 4) as p95_pct
-from analytics_marts.fct_hourly_strategy_trades
+from analytics_marts.fct_hourly_strategy_candidates
 where is_eligible_trade
   and entry_hour_utc in (21, 22)
 group by entry_hour_utc
@@ -898,7 +898,7 @@ with hour_trades as (
         trade_return,
         equity,
         drawdown
-    from analytics_marts.fct_hourly_strategy_trades
+    from analytics_marts.fct_hourly_strategy_candidates
     where is_eligible_trade
       and entry_hour_utc = 22
 ),
@@ -994,7 +994,7 @@ select
     exit_rows.raw_close_price,
     exit_rows.malformed_close_rows
 from samples s
-join analytics_marts.fct_hourly_strategy_trades f
+join analytics_marts.fct_hourly_strategy_candidates f
   on f.trade_date = s.trade_date
  and f.entry_hour_utc = s.entry_hour_utc
 left join lateral (
@@ -1042,7 +1042,7 @@ select
     count(*) as excluded_candidates,
     min(trade_date) as first_excluded_date,
     max(trade_date) as last_excluded_date
-from analytics_marts.fct_hourly_strategy_trades
+from analytics_marts.fct_hourly_strategy_candidates
 where is_within_source_window
   and not is_eligible_trade
 group by entry_hour_utc, trade_status
@@ -1058,7 +1058,7 @@ select
     entry_row_count,
     exit_row_count,
     invalid_exit_close_time_count
-from analytics_marts.fct_hourly_strategy_trades
+from analytics_marts.fct_hourly_strategy_candidates
 where is_within_source_window
   and not is_eligible_trade
 order by trade_date, entry_hour_utc;
@@ -1094,7 +1094,7 @@ with ranked as (
     	PARTITION BY entry_hour_utc
     	order by trade_return, trade_date
     ) as worst_rank
-	from analytics_marts.fct_hourly_strategy_trades
+	from analytics_marts.fct_hourly_strategy_candidates
 	where is_eligible_trade
 	and entry_hour_utc in (21,22)
 )
@@ -1152,7 +1152,7 @@ with ranked as (
 		partition by entry_hour_utc
 		order by trade_return desc, trade_date    
     ) as best_rank
-	from analytics_marts.fct_hourly_strategy_trades
+	from analytics_marts.fct_hourly_strategy_candidates
 	where is_eligible_trade
 	and entry_hour_utc in (21,22)
 )
@@ -1185,7 +1185,7 @@ select
     round((percentile_cont(0.50) within group (order by trade_return))::numeric * 100, 4) as p50_pct,
     round((percentile_cont(0.75) within group (order by trade_return))::numeric * 100, 4) as p75_pct,
     round((percentile_cont(0.95) within group (order by trade_return))::numeric * 100, 4) as p95_pct
-from analytics_marts.fct_hourly_strategy_trades
+from analytics_marts.fct_hourly_strategy_candidates
 where is_eligible_trade
   and entry_hour_utc in (21, 22)
 group by entry_hour_utc
@@ -1240,7 +1240,7 @@ with hour_trades as (
         trade_return,
         equity,
         drawdown
-    from analytics_marts.fct_hourly_strategy_trades
+    from analytics_marts.fct_hourly_strategy_candidates
     where is_eligible_trade
       and entry_hour_utc = 22
 ),
@@ -1336,7 +1336,7 @@ select
     exit_rows.raw_close_price,
     exit_rows.malformed_close_rows
 from samples s
-join analytics_marts.fct_hourly_strategy_trades f
+join analytics_marts.fct_hourly_strategy_candidates f
   on f.trade_date = s.trade_date
  and f.entry_hour_utc = s.entry_hour_utc
 left join lateral (
@@ -1380,7 +1380,7 @@ with ranked_trades as (
             partition by entry_hour_utc
             order by trade_return, trade_date
         ) as worst_rank
-    from analytics_marts.fct_hourly_strategy_trades
+    from analytics_marts.fct_hourly_strategy_candidates
     where is_eligible_trade
 ),
 scenarios(scenario, trim_both_tails) as (

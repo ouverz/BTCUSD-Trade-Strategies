@@ -3,7 +3,7 @@ with terminal_equity as (
         symbol,
         entry_hour_utc,
         equity
-    from {{ ref('fct_hourly_strategy_trades') }}
+    from {{ ref('fct_hourly_strategy_candidates') }}
     where is_eligible_trade
     order by symbol, entry_hour_utc, trade_date desc
 )

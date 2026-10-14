@@ -55,7 +55,7 @@ with aggregated as (
             filter (where is_eligible_trade))[1] as maximum_drawdown_peak_date,
         (array_agg(trade_date order by drawdown, trade_date)
             filter (where is_eligible_trade))[1] as maximum_drawdown_trough_date
-    from {{ ref('fct_hourly_strategy_trades') }}
+    from {{ ref('fct_hourly_strategy_candidates') }}
     group by symbol, entry_hour_utc
 )
 select

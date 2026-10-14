@@ -1,8 +1,8 @@
 version: 2
 
 models:
-  - name: fct_hourly_strategy_trades
-    description: Contracted audit fact containing every requested date-hour candidate and eligible-trade performance.
+  - name: fct_hourly_strategy_candidates
+    description: Contracted audit fact at requested date-hour candidate grain, including excluded candidates and eligible-trade performance.
     config:
       contract: {enforced: true}
     columns:
@@ -63,7 +63,7 @@ models:
       - {name: in_source_period_count, data_type: bigint, description: Candidates fully inside source coverage, data_tests: [not_null]}
       - {name: eligible_trade_count, data_type: bigint, description: Eligible trades, data_tests: [not_null]}
       - {name: excluded_in_source_period_count, data_type: bigint, description: In-source candidates rejected by endpoint quality rules, data_tests: [not_null]}
-      - {name: coverage_rate, data_type: double precision, description: Eligible trades divided by in-source candidates, data_tests: [not_null]}
+      - {name: coverage_rate, data_type: double precision, description: Eligible trades divided by in-source candidates; null when there are no in-source candidates.}
       - {name: missing_entry_period_count, data_type: bigint, description: In-source candidates missing entry, data_tests: [not_null]}
       - {name: missing_exit_period_count, data_type: bigint, description: In-source candidates missing exit, data_tests: [not_null]}
       - {name: conflicting_entry_period_count, data_type: bigint, description: In-source candidates with conflicting entry prices, data_tests: [not_null]}
@@ -71,22 +71,22 @@ models:
       - {name: malformed_exit_period_count, data_type: bigint, description: In-source candidates with malformed exit timing, data_tests: [not_null]}
       - {name: deduplicated_entry_period_count, data_type: bigint, description: Identical repeated entry observations, data_tests: [not_null]}
       - {name: deduplicated_exit_period_count, data_type: bigint, description: Identical repeated valid exit observations, data_tests: [not_null]}
-      - {name: candidate_start_date, data_type: date, description: First in-source candidate date, data_tests: [not_null]}
-      - {name: candidate_end_date, data_type: date, description: Last in-source candidate date, data_tests: [not_null]}
-      - {name: evaluated_start_date, data_type: date, description: First eligible trade date, data_tests: [not_null]}
-      - {name: evaluated_end_date, data_type: date, description: Last eligible trade date, data_tests: [not_null]}
-      - {name: mean_trade_return, data_type: double precision, description: Arithmetic mean eligible one-hour return, data_tests: [not_null]}
-      - {name: median_trade_return, data_type: double precision, description: Median eligible one-hour return, data_tests: [not_null]}
-      - {name: trade_return_stddev, data_type: double precision, description: Sample standard deviation of eligible returns, data_tests: [not_null]}
-      - {name: positive_trade_rate, data_type: double precision, description: Share of eligible trades with positive return, data_tests: [not_null]}
-      - {name: worst_trade_return, data_type: double precision, description: Lowest eligible one-hour return, data_tests: [not_null]}
-      - {name: best_trade_return, data_type: double precision, description: Highest eligible one-hour return, data_tests: [not_null]}
-      - {name: final_equity, data_type: double precision, description: Terminal compounded equity, data_tests: [not_null]}
-      - {name: compounded_return, data_type: double precision, description: Terminal equity minus initial equity, data_tests: [not_null]}
-      - {name: maximum_drawdown, data_type: double precision, description: Most negative peak-relative drawdown, data_tests: [not_null]}
-      - {name: maximum_drawdown_magnitude, data_type: double precision, description: Positive magnitude of maximum drawdown, data_tests: [not_null]}
+      - {name: candidate_start_date, data_type: date, description: First in-source candidate date; null when no candidates are in source bounds.}
+      - {name: candidate_end_date, data_type: date, description: Last in-source candidate date; null when no candidates are in source bounds.}
+      - {name: evaluated_start_date, data_type: date, description: First eligible trade date; null when there are no eligible trades.}
+      - {name: evaluated_end_date, data_type: date, description: Last eligible trade date; null when there are no eligible trades.}
+      - {name: mean_trade_return, data_type: double precision, description: Arithmetic mean eligible one-hour return; null when there are no eligible trades.}
+      - {name: median_trade_return, data_type: double precision, description: Median eligible one-hour return; null when there are no eligible trades.}
+      - {name: trade_return_stddev, data_type: double precision, description: Sample standard deviation of eligible returns; null for fewer than two trades.}
+      - {name: positive_trade_rate, data_type: double precision, description: Share of eligible trades with positive return; null when there are no eligible trades.}
+      - {name: worst_trade_return, data_type: double precision, description: Lowest eligible one-hour return; null when there are no eligible trades.}
+      - {name: best_trade_return, data_type: double precision, description: Highest eligible one-hour return; null when there are no eligible trades.}
+      - {name: final_equity, data_type: double precision, description: Terminal compounded equity; null when there are no eligible trades.}
+      - {name: compounded_return, data_type: double precision, description: Terminal equity minus initial equity; null when there are no eligible trades.}
+      - {name: maximum_drawdown, data_type: double precision, description: Most negative peak-relative drawdown; null when there are no eligible trades.}
+      - {name: maximum_drawdown_magnitude, data_type: double precision, description: Positive magnitude of maximum drawdown; null when there are no eligible trades.}
       - {name: maximum_drawdown_peak_date, data_type: date, description: Observed peak date preceding the maximum drawdown; null when initial capital is the peak.}
-      - {name: maximum_drawdown_trough_date, data_type: date, description: Date on which maximum drawdown is first attained, data_tests: [not_null]}
+      - {name: maximum_drawdown_trough_date, data_type: date, description: Date on which maximum drawdown is first attained; null when there are no eligible trades.}
 
   - name: agg_hourly_strategy_yearly
     description: Contracted year-local performance and coverage by UTC strategy hour with annual equity resets.
@@ -101,28 +101,28 @@ models:
       - {name: in_source_period_count, data_type: bigint, description: Candidates inside source coverage, data_tests: [not_null]}
       - {name: eligible_trade_count, data_type: bigint, description: Eligible annual trades, data_tests: [not_null]}
       - {name: excluded_in_source_period_count, data_type: bigint, description: Rejected in-source annual candidates, data_tests: [not_null]}
-      - {name: coverage_rate, data_type: double precision, description: Eligible annual trades divided by in-source candidates, data_tests: [not_null]}
-      - {name: candidate_start_date, data_type: date, description: First in-source candidate date in the year, data_tests: [not_null]}
-      - {name: candidate_end_date, data_type: date, description: Last in-source candidate date in the year, data_tests: [not_null]}
-      - {name: evaluated_start_date, data_type: date, description: First eligible date in the year, data_tests: [not_null]}
-      - {name: evaluated_end_date, data_type: date, description: Last eligible date in the year, data_tests: [not_null]}
-      - {name: mean_trade_return, data_type: double precision, description: Mean eligible annual trade return, data_tests: [not_null]}
-      - {name: median_trade_return, data_type: double precision, description: Median eligible annual trade return, data_tests: [not_null]}
-      - {name: trade_return_stddev, data_type: double precision, description: Annual sample standard deviation, data_tests: [not_null]}
-      - {name: positive_trade_rate, data_type: double precision, description: Annual share of positive eligible trades, data_tests: [not_null]}
-      - {name: worst_trade_return, data_type: double precision, description: Worst annual eligible trade return, data_tests: [not_null]}
-      - {name: best_trade_return, data_type: double precision, description: Best annual eligible trade return, data_tests: [not_null]}
-      - {name: final_equity, data_type: double precision, description: Terminal equity with annual reset, data_tests: [not_null]}
-      - {name: compounded_return, data_type: double precision, description: Annual terminal equity minus one, data_tests: [not_null]}
-      - {name: maximum_drawdown, data_type: double precision, description: Year-local maximum drawdown, data_tests: [not_null]}
-      - {name: maximum_drawdown_magnitude, data_type: double precision, description: Positive year-local drawdown magnitude, data_tests: [not_null]}
+      - {name: coverage_rate, data_type: double precision, description: Eligible annual trades divided by in-source candidates; null when the denominator is zero.}
+      - {name: candidate_start_date, data_type: date, description: First in-source candidate date in the year; null when none are in source bounds.}
+      - {name: candidate_end_date, data_type: date, description: Last in-source candidate date in the year; null when none are in source bounds.}
+      - {name: evaluated_start_date, data_type: date, description: First eligible date in the year; null when there are no eligible trades.}
+      - {name: evaluated_end_date, data_type: date, description: Last eligible date in the year; null when there are no eligible trades.}
+      - {name: mean_trade_return, data_type: double precision, description: Mean eligible annual trade return; null when there are no eligible trades.}
+      - {name: median_trade_return, data_type: double precision, description: Median eligible annual trade return; null when there are no eligible trades.}
+      - {name: trade_return_stddev, data_type: double precision, description: Annual sample standard deviation; null for fewer than two trades.}
+      - {name: positive_trade_rate, data_type: double precision, description: Annual share of positive eligible trades; null when there are no eligible trades.}
+      - {name: worst_trade_return, data_type: double precision, description: Worst annual eligible trade return; null when there are no eligible trades.}
+      - {name: best_trade_return, data_type: double precision, description: Best annual eligible trade return; null when there are no eligible trades.}
+      - {name: final_equity, data_type: double precision, description: Terminal equity with annual reset; null when there are no eligible trades.}
+      - {name: compounded_return, data_type: double precision, description: Annual terminal equity minus one; null when there are no eligible trades.}
+      - {name: maximum_drawdown, data_type: double precision, description: Year-local maximum drawdown; null when there are no eligible trades.}
+      - {name: maximum_drawdown_magnitude, data_type: double precision, description: Positive year-local drawdown magnitude; null when there are no eligible trades.}
     data_tests:
       - dbt_expectations.expect_compound_columns_to_be_unique:
           arguments:
             column_list: [symbol, trade_year, entry_hour_utc]
 
   - name: rpt_assignment_answers
-    description: Deterministic two-row report answering the assignment questions from the governed summary.
+    description: Report answering the assignment questions when at least one strategy has eligible trades; empty when the requested range has none.
     config:
       contract: {enforced: true}
     columns:

@@ -30,14 +30,14 @@ select trade_date, entry_hour_utc, expected_entry_at_utc, expected_exit_at_utc,
        exit_price_version_count, invalid_exit_close_time_count,
        entry_price, exit_price, trade_status, exclusion_reason,
        trade_return, equity, running_peak, drawdown
-from analytics_marts.fct_hourly_strategy_trades
+from analytics_marts.fct_hourly_strategy_candidates
 where entry_hour_utc in (10, 22)
   and trade_date between date '2024-01-01' and date '2024-01-10'
 order by entry_hour_utc, trade_date;
 
 \echo '5. Explain why in-source candidates were excluded'
 select entry_hour_utc, trade_status, count(*) as candidate_count
-from analytics_marts.fct_hourly_strategy_trades
+from analytics_marts.fct_hourly_strategy_candidates
 where is_within_source_window and not is_eligible_trade
 group by entry_hour_utc, trade_status
 order by entry_hour_utc, candidate_count desc, trade_status;
@@ -55,7 +55,7 @@ with recomputed as (
            lag(equity, 1, 1.0) over (
                partition by symbol, entry_hour_utc order by trade_date
            ) as prior_equity
-    from analytics_marts.fct_hourly_strategy_trades
+    from analytics_marts.fct_hourly_strategy_candidates
     where is_eligible_trade
 )
 select count(*) filter (

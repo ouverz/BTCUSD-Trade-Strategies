@@ -51,18 +51,20 @@ These are recorded reference results, not a guarantee that a fresh run will matc
 
 ## Data model and lineage
 
-The graph below shows the current dbt model lineage and its connected tests and exposure. It makes the transformation path and model dependencies visible from the raw source through the analyst-facing marts.
+The graph below shows dbt model lineage and its connected tests and exposure, from the raw source through the analyst-facing marts.
 
-![Current dbt model lineage, tests, and exposure](Lineage%20Graph.png)
+![dbt model lineage, tests, and exposure](Lineage%20Graph.png)
+
+The saved graph predates the fact-model rename: its `fct_hourly_strategy_trades` node is now `fct_hourly_strategy_candidates`. Refresh the screenshot after generating the current dbt docs before publishing.
 
 Key analyst-facing relations in `analytics_marts`:
 
 | Model | Grain and purpose |
 |---|---|
-| [`fct_hourly_strategy_trades`](models/marts/fct_hourly_strategy_trades.sql) | One row per requested date and UTC hour, including eligibility, exclusion reasons, endpoint diagnostics, and eligible-trade metrics. |
+| [`fct_hourly_strategy_candidates`](models/marts/fct_hourly_strategy_candidates.sql) | One row per requested date and UTC hour, including eligibility, exclusion reasons, endpoint diagnostics, and eligible-trade metrics. |
 | [`agg_hourly_strategy_summary`](models/marts/agg_hourly_strategy_summary.sql) | One row per hour with coverage, return distribution, compounded return, and maximum drawdown across the full period. |
 | [`agg_hourly_strategy_yearly`](models/marts/agg_hourly_strategy_yearly.sql) | One row per year and hour, with year-local equity and performance diagnostics. |
-| [`rpt_assignment_answers`](models/marts/rpt_assignment_answers.sql) | The two deterministic assignment winners selected from the hourly summary. |
+| [`rpt_assignment_answers`](models/marts/rpt_assignment_answers.sql) | The two deterministic assignment winners when at least one strategy has eligible trades; empty if the requested range has none. |
 
 ### Data and eligibility policy
 
@@ -138,7 +140,7 @@ Use `--reload` deliberately: it replaces the raw table’s current contents and 
 
 ### Focused dbt development
 
-After PostgreSQL is running and raw data has been loaded, iterate on dbt independently:
+After PostgreSQL is running and raw data has been loaded, run dbt independently:
 
 ```bash
 docker compose run --rm dbt deps
@@ -152,6 +154,15 @@ docker compose run --rm dbt test
 ```
 
 These commands assume the Compose database and loaded raw relation already exist. Python dependencies are declared in [`requirements.txt`](requirements.txt) and installed with pip in the Docker image and CI. The direct dbt adapter version is pinned; transitive Python dependency versions are not fully locked.
+
+To refresh and preview the dbt documentation after a build:
+
+```bash
+docker compose run --rm dbt docs generate
+docker compose run --rm --no-deps -p 8080:8080 dbt docs serve --host 0.0.0.0
+```
+
+Open `http://localhost:8080` while the second command is running. Stop the preview with `Ctrl-C`.
 
 ### Troubleshooting a PostgreSQL port conflict
 
@@ -180,13 +191,14 @@ Controls are applied at several distinct stages. A passing test suite validates 
 | Transformation and metric invariants | Singular SQL tests check exact endpoint use, status/eligibility consistency, candidate-count reconciliation, exclusions, equity compounding, drawdown, yearly reconciliation, and answer cardinality. | [`tests/`](tests/) |
 | Keys, accepted values, and model contracts | dbt generic tests enforce nullability, uniqueness, ranges, and composite grain. Public marts enforce declared column contracts and data types. | [`models/staging/`](models/staging/), [`models/intermediate/intermediate.yml`](models/intermediate/intermediate.yml), [`models/marts/marts.yml`](models/marts/marts.yml) |
 | Documentation and architecture rules | A manifest-based check requires model/column descriptions, prevents non-staging models from reading sources directly, requires mart contracts/data types, and checks the analyst exposure. | [`scripts/governance_check.py`](scripts/governance_check.py) |
-| Continuous integration | GitHub Actions generates a deterministic two-day synthetic CSV and runs `run.sh` end-to-end, including ingestion, source audit, dbt build/tests, docs, governance, and result assertions. It does not download the full assignment dataset or validate the recorded full-history winners. | [`.github/workflows/dbt-quality.yml`](.github/workflows/dbt-quality.yml), [`scripts/create_ci_fixture.py`](scripts/create_ci_fixture.py), [`tests/fixtures/assert_ci_results.sql`](tests/fixtures/assert_ci_results.sql) |
+| Continuous integration | GitHub Actions generates a deterministic two-day synthetic CSV and runs `run.sh` end-to-end, including ingestion, source audit, dbt build/tests, docs, governance, result assertions, and a no-eligible-trades date-range check. It does not download the full assignment dataset or validate the recorded full-history winners. | [`.github/workflows/dbt-quality.yml`](.github/workflows/dbt-quality.yml), [`scripts/create_ci_fixture.py`](scripts/create_ci_fixture.py), [`tests/fixtures/assert_ci_results.sql`](tests/fixtures/assert_ci_results.sql), [`tests/fixtures/assert_empty_range_results.sql`](tests/fixtures/assert_empty_range_results.sql) |
 
 Load provenance is stored in `raw.load_audit`; per-load source-quality results are stored in `raw.source_quality_audit`. Use [`sql/source_quality_results.sql`](sql/source_quality_results.sql) to review the latest source audit. The end-to-end script also saves the dbt build result as `target/build_run_results.json` before generating docs.
 
 ## Limitations and interpretation
 
 - The first and last dates in the source may be partial. Such boundary candidates are visible but excluded from the in-source coverage denominator.
+- Requested ranges with no eligible trades retain candidate and summary diagnostics; no assignment winners are reported for an entirely ineligible range.
 - Duplicate/conflict handling is limited to the exact endpoint timestamps and prices used by this strategy. The project does not create a canonicalized full-source candle table or row-level quarantine system.
 - Source identity is checked by filename and file size, not a content checksum.
 - The 24 hours are compared on the same historical sample. Selecting the apparent winner on that sample introduces selection bias; yearly summaries are diagnostics, not out-of-sample validation.

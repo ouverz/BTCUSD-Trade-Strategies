@@ -7,7 +7,7 @@ with eligible as (
             order by trade_date
             rows between unbounded preceding and current row
         )) as yearly_equity
-    from {{ ref('fct_hourly_strategy_trades') }}
+    from {{ ref('fct_hourly_strategy_candidates') }}
     where is_eligible_trade
 ),
 yearly_peaks as (
@@ -51,7 +51,7 @@ candidate_aggregates as (
             / nullif(count(*) filter (where is_eligible_trade), 0) as positive_trade_rate,
         min(trade_return::double precision) filter (where is_eligible_trade) as worst_trade_return,
         max(trade_return::double precision) filter (where is_eligible_trade) as best_trade_return
-    from {{ ref('fct_hourly_strategy_trades') }}
+    from {{ ref('fct_hourly_strategy_candidates') }}
     group by symbol, extract(year from trade_date), entry_hour_utc
 ),
 performance_aggregates as (

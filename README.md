@@ -1,91 +1,129 @@
-# Bitcoin Hourly Strategy Backtest
+# BTC/USDT Hourly Strategy Backtest
 
-Reproducible PostgreSQL + dbt implementation of the BTC/USDT hourly strategy assignment. The data pipeline runs in Docker; UV manages the pinned Python/dbt dependency for both the container and CI.
+An end-to-end analytics engineering project that loads Binance one-second BTC/USDT candles into PostgreSQL, transforms them with dbt, and compares 24 hypothetical hourly trading strategies. The pipeline is designed to make candidate eligibility, source gaps, duplicate handling, compounding, and drawdown auditable—not just to produce two headline numbers.
 
-## Prerequisites and input
+## Findings
 
-- Docker with Compose v2
-- UV (for local Python dependency setup and dbt development; `./run.sh` runs dbt in Docker)
-- Exactly one root-level `.csv`, or set `DATA_FILE=/absolute/path/to/file.csv`
-- Expected header (case-sensitive): `Open Time,Open,High,Low,Close,Volume,Close Time,Quote Asset Volume,Number of Trades,Taker Buy Base Asset Volume,Taker Buy Quote Asset Volume,Ignore`
+The recorded full-history run covers eligible trades from **2021-02-23 through 2024-08-27**. Each result below is based on 1,282 eligible trade days.
 
-The assignment CSV is runtime input and must be placed in the project root; it is intentionally excluded from version control and from the Docker build context. Copy `.env.example` to `.env` before running. The default credentials are for local development only. PostgreSQL is published on localhost only; do not expose this Compose configuration as a production database.
+| Question | UTC entry hour | Result |
+|---|---:|---:|
+| Greatest compounded return | 22:00 | **42.519%** |
+| Smallest maximum-drawdown magnitude | 10:00 | **9.034%** |
 
-Python dependencies are declared in `pyproject.toml` and installed with UV. To prepare a local Python environment for dbt commands outside Docker, run:
+These are historical results under the assumptions below, not forecasts or evidence of future profitability. The best of 24 hours was selected after examining the same period, so the winning return is exposed to multiple-comparison and selection bias. The figures are from a previously validated run; run the pipeline on the supplied source file to reproduce and verify them.
 
-```bash
-uv sync
+## What the strategy measures
+
+Each UTC hour is treated as a separate hypothetical account. On every eligible date, the account enters at that hour’s exact `HH:00:00` candle open and exits at the exact `HH:59:59` candle close. The full resulting balance is reinvested on the next eligible date.
+
+For each eligible trade:
+
+```text
+trade factor = exit price / entry price
+trade return = trade factor - 1
+equity = cumulative product of trade factors, starting from 1.0
+drawdown = equity / running peak - 1
 ```
 
-## Run
-
-```bash
-./run.sh
-./run.sh --start-date 2024-01-01 --end-date 2024-01-31 --hour 9
-./run.sh --reload
-```
-
-Dates are inclusive and default to the full source range. `--hour` controls displayed output only; all 24 hours are always compared. Existing raw data is reused unless `--reload` is supplied. Reuse requires the selected filename and file size to match the latest load record; a same-size content change is not detected because checksum work is deferred. If upgrading a database created before load sizes were recorded, run `./run.sh --reload` once to establish the new provenance fields and audit the source. Reloading is transactional: the old raw table remains usable if `COPY` or index creation fails. A successful reload appends load provenance, recreates the non-unique timestamp index, refreshes PostgreSQL statistics, and runs a consolidated source-quality audit before dbt.
-
-Useful development commands:
-
-```bash
-docker compose up -d postgres
-docker compose run --rm dbt build
-docker compose run --rm dbt test
-docker compose down
-```
-
-The standalone dbt commands assume the raw source has already been loaded and dbt packages have been installed. `./run.sh` handles dependency installation, model build, tests, documentation, governance checks, and final SQL output end to end. `docker compose down` stops services but preserves the local PostgreSQL bind-mounted data.
-
-Generated dbt documentation is written to `target/`. `target/build_run_results.json` preserves the build results before documentation generation replaces dbt's ordinary `run_results.json` artifact.
-
-PostgreSQL is stored in the ignored `postgres_data/` bind-mounted directory and persists between runs. Because this is a bind mount, `docker compose down -v` does not delete it; use `./run.sh --reload` to replace its raw dataset.
-
-`run.sh` prints both the assignment answers and an aggregate endpoint-quality summary. The same quality summary can be run independently with `sql/source_quality_results.sql`. Load history is stored in `raw.load_audit`; source-level quality results are retained per load in `raw.source_quality_audit`. Known malformed close timestamps are reported but do not fail the load; impossible price, OHLC, or volume relationships and load-metadata mismatches do.
-
-## Interpretation
-
-For each UTC date and entry hour, the strategy buys at the exact first-second `open` and sells at the exact final-second `close`. Repeated physical rows are accepted only when the strategy-relevant endpoint prices agree: entry `open` at exactly `HH:00:00`, and valid exit `close` at exactly `HH:59:59`. Conflicting prices are not resolved by choosing a maximum or latest row; the resolved price is null and the candidate is excluded. Any malformed physical copy at the exit timestamp also excludes the candidate. Nearby timestamps do not substitute for exact endpoints. Missing endpoints, conflicts, nonpositive prices, and malformed exit candles remain visible as diagnostics. Trade factor is `exit_price / entry_price`; compounded equity is the cumulative product of factors. Drawdown is `equity / running_peak - 1`, and maximum loss is the positive magnitude of the minimum drawdown.
+“Smallest maximum-loss magnitude” is interpreted as the shallowest maximum peak-to-trough drawdown. It is not the smallest losing trade. The backtest excludes fees, bid/ask spread, slippage, latency, market impact, taxes, leverage constraints, and execution failures.
 
 ## Data model
 
-The transformation path makes every grain change explicit:
+The models make the grain and responsibility of each transformation explicit:
 
-```text
-raw physical rows
-  -> staging physical candles
-  -> requested strategy periods
-  -> resolved endpoint observations
-  -> classified candidate trades
-  -> eligible-trade equity
-  -> public trade, hourly, yearly, and answer marts
+```mermaid
+flowchart LR
+    raw["raw physical candle rows"] --> stg["staging: source-conformed candles"]
+    stg --> periods["intermediate: requested date-hour periods"]
+    stg --> endpoints["intermediate: exact endpoint observations"]
+    periods --> endpoints
+    endpoints --> trades["intermediate: classified candidate trades"]
+    trades --> equity["intermediate: compounded equity and drawdown"]
+    trades --> fact["mart: trade-level audit fact"]
+    equity --> fact
+    fact --> summary["mart: hourly summary"]
+    fact --> yearly["mart: yearly summary"]
+    summary --> answers["mart: assignment answers"]
 ```
 
-Public relations in `analytics_marts`:
+Key relations in the `analytics_marts` schema:
 
-- `fct_hourly_strategy_trades`: every requested date-hour, including exclusions and their reasons.
-- `agg_hourly_strategy_summary`: the 24 all-history strategies with coverage, distribution, return, and risk metrics.
-- `agg_hourly_strategy_yearly`: the same comparison by UTC calendar year with annual equity resets.
-- `rpt_assignment_answers`: the deterministic two-row assignment result.
+| Model | Purpose |
+|---|---|
+| `fct_hourly_strategy_trades` | One row per requested date-hour, including exclusions, reasons, endpoint diagnostics, and eligible-trade metrics. |
+| `agg_hourly_strategy_summary` | All-history coverage, return distribution, compounded return, and drawdown for each of the 24 hours. |
+| `agg_hourly_strategy_yearly` | Calendar-year diagnostics and performance, with equity reset each year. |
+| `rpt_assignment_answers` | The two deterministic winners used to answer the assignment. |
 
-The first and last source dates may be partial. Candidates whose two endpoints cannot fit inside the overall source timestamp range are labeled `outside_source_window`; they are not treated as internal data failures and are excluded from the coverage denominator.
+### Data-quality policy
 
-Pull requests run a small deterministic two-day Postgres/dbt build in GitHub Actions. It validates transformations and governance without downloading or committing the full market-data CSV.
+The source is kept at physical-row grain in raw and staging. At the strategy endpoints, repeated rows are accepted only when the relevant prices agree: entry `open` at the exact start timestamp and valid exit `close` at the exact final-second timestamp. Conflicting prices are not resolved by choosing a maximum or latest record; the price remains unresolved and the candidate is excluded. Any malformed physical copy at the exit timestamp also excludes the candidate. Nearby timestamps are not substituted for missing exact endpoints.
 
-Duplicate and conflict checks are intentionally limited to the two timestamps and price fields used by the strategy. No full-source canonical candle table, file checksum, or row-level quarantine process is part of the default dbt build; those would require a demonstrated need and matching ingestion support.
+Candidates whose endpoints fall outside the dataset’s overall timestamp window remain visible as `outside_source_window` and are excluded from the in-source coverage denominator. Internal missing endpoints, conflicting prices, nonpositive prices, and malformed exits remain visible with diagnostic counts and statuses.
 
-## Recorded reference results
+## Run the project
 
-The previously validated full-history run selected:
+### Requirements
 
-| Assignment question | Selected UTC hour | Result | Eligible trade days |
-|---|---:|---:|---:|
-| Greatest compounded return | 22 | 42.519% | 1,282 |
-| Smallest maximum-drawdown magnitude | 10 | 9.034% | 1,282 |
+- Docker with Docker Compose v2
+- The assignment CSV in the project root (or provide its path through `DATA_FILE`)
+- The container and CI use UV to install the Python dependencies declared in `pyproject.toml`; install UV on the host only if you want a local Python environment
 
-Both results cover eligible trades from 2021-02-23 through 2024-08-27.
+The input header must match this exact, case-sensitive sequence:
 
-These are historical, assumption-bound backtest results, not a claim of future profitability. The best of 24 hours was selected after comparing them on the same historical data, so the winning return is subject to multiple-comparison / selection bias. The calculation excludes fees, spread, slippage, latency, market impact, and execution constraints. Re-run `./run.sh` against the supplied CSV to reproduce the answers; verify the current run output before quoting these figures as the result of a fresh build.
+```text
+Open Time,Open,High,Low,Close,Volume,Close Time,Quote Asset Volume,Number of Trades,Taker Buy Base Asset Volume,Taker Buy Quote Asset Volume,Ignore
+```
 
+Copy `.env.example` to `.env` before running. The supplied credentials are for local development. PostgreSQL is bound to localhost; do not expose this Compose configuration as a production database. The source CSV is runtime input and is excluded from version control and the Docker build context.
 
+### End-to-end run
+
+```bash
+./run.sh
+```
+
+The script starts PostgreSQL, creates the raw relations if needed, loads or reuses the selected source, runs the source-quality audit, installs dbt packages, executes `dbt build`, generates dbt documentation, runs governance checks, and prints the assignment answers plus an endpoint-quality summary.
+
+Optional examples:
+
+```bash
+./run.sh --start-date 2024-01-01 --end-date 2024-01-31
+DATA_FILE=/absolute/path/to/candles.csv ./run.sh
+./run.sh --reload
+```
+
+Date bounds are inclusive. `--reload` replaces the raw dataset transactionally and reruns its source audit. Without it, a loaded source is reused only when the selected filename and file size match the latest load audit; same-size content changes are not detected because checksums are not currently calculated. PostgreSQL data persists in the local `postgres_data/` bind mount; `docker compose down` stops services but does not remove that data.
+
+`--hour 0-23` filters the displayed two-row winner report only. It does not restrict model calculations to one strategy, and the report will have no matching row when the chosen hour did not win either question.
+
+### Focused dbt development
+
+After the raw data has been loaded, the dbt commands can be run independently:
+
+```bash
+docker compose run --rm dbt deps
+docker compose run --rm dbt build
+docker compose run --rm dbt test
+```
+
+Python dependencies are declared in `pyproject.toml`, which pins `dbt-postgres` directly. A `uv.lock` is not currently committed, so transitive dependency versions are not fully frozen. For a local host-side environment, run `uv sync`; the main workflow does not require host-side dbt because it runs dbt in Docker.
+
+## Validation and observability
+
+- dbt generic and singular data tests check keys, status/eligibility consistency, exact endpoint use, candidate counts, compounding, drawdown, yearly reconciliation, and final-answer cardinality.
+- dbt unit tests cover endpoint pairing, duplicate/conflict behavior, malformed exits, eligibility, and equity calculations with deterministic fixtures.
+- Public marts enforce dbt model contracts and document columns; a manifest-based governance check validates documentation, contracts, and source-layer boundaries.
+- GitHub Actions builds the project against a deterministic two-day PostgreSQL fixture, without downloading or committing the full market-data file.
+- `raw.load_audit` records load provenance; `raw.source_quality_audit` retains source-quality results by load. `sql/source_quality_results.sql` displays the latest audit.
+
+The consolidated source audit rejects impossible prices, OHLC relationships, volume relationships, and load-metadata mismatches. Known malformed close timestamps are retained as diagnostics rather than failing ingestion, allowing the transformation logic to exclude affected strategy candidates explicitly.
+
+## Reproducibility and known limitations
+
+- The source’s first and last dates may be partial; such boundary candidates are visible but are not counted as internal endpoint failures.
+- Duplicate/conflict resolution is scoped to the two timestamps and price fields used by this strategy. The project does not build a canonicalized full-source candle table or a row-level quarantine system.
+- Source identity is checked by filename and file size, not a content checksum.
+- Annual results are diagnostic views of historical stability, not out-of-sample validation. A more credible profitability assessment would require pre-defined selection rules, an untouched evaluation period, and realistic transaction costs.
+- Generated dbt documentation and build artifacts are written under `target/`; the saved build run result is `target/build_run_results.json`.

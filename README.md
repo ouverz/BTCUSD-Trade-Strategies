@@ -1,13 +1,15 @@
 # BTC/USDT Hourly Strategy Backtest
 
-This project answers two questions from the Bitcoin Backtesting Engine assignment using Binance one-second BTC/USDT candles:
+The Bitcoin Backtesting Engine assignment asks for a repeatable analysis of a proposed Bitcoin trading strategy, using Binance BTC/USDT one-second candle data from the provided Kaggle dataset. The central challenge is to transform that detailed source into trustworthy, testable performance results; the assignment places more emphasis on the transformation layer than on the mechanics of loading data.
 
-- Which UTC hour would have produced the greatest compounded return?
-- Which UTC hour would have had the smallest maximum loss (measured here as maximum drawdown magnitude)?
+The strategy buys at the first second of a selected hour and sells at its final second, repeating the trade daily at the same UTC hour. Gains and losses are fully reinvested in subsequent trades. The analysis should be easy to repeat for different hours and evaluation periods.
 
-The assignment describes a daily, one-hour trade: buy one bitcoin at the first second of a chosen hour, sell at its last second, and reinvest the resulting gains or losses in the next trade. This implementation evaluates all 24 UTC entry hours over the available history, with configurable date bounds, so the comparison can be repeated for different hours and periods.
+The assignment asks two business questions:
 
-The main work is the transformation layer: turning raw second-level candles into auditable endpoint observations, eligible or excluded daily trades, compounded equity and drawdown, and final hourly comparisons. PostgreSQL stores the source data; dbt builds and tests those transformations. Source quality, eligibility decisions, exclusions, metric calculations, and model lineage are inspectable throughout.
+- Which hour of the day had the greatest returns?
+- Which hour of the day had the lowest maximum losses?
+
+This implementation operationalizes those questions as greatest compounded return and smallest maximum-drawdown magnitude. It evaluates all 24 UTC entry hours over the available history, with configurable date bounds. PostgreSQL stores the source data; dbt transforms and tests it through auditable endpoint observations, trade eligibility and exclusions, equity and drawdown calculations, and final comparisons.
 
 The findings are historical results under explicit assumptions—not investment advice or evidence of future profitability. The simulation omits trading costs and execution constraints, and choosing a winner from the same period used to evaluate it creates selection bias.
 
@@ -39,22 +41,9 @@ These are recorded reference results, not a guarantee that a fresh run will matc
 
 ## Data model and lineage
 
-The transformations keep each grain change explicit:
+The graph below shows the current dbt model lineage and its connected tests and exposure. It makes the transformation path and model dependencies visible from the raw source through the analyst-facing marts.
 
-```mermaid
-flowchart LR
-    raw["raw physical candle rows"] --> stg["staging: source-conformed candles"]
-    stg --> periods["intermediate: requested date-hour periods"]
-    stg --> endpoints["intermediate: exact endpoint observations"]
-    periods --> endpoints
-    endpoints --> trades["intermediate: classified candidates"]
-    trades --> equity["intermediate: compounded equity and drawdown"]
-    trades --> fact["mart: trade-level audit fact"]
-    equity --> fact
-    fact --> summary["mart: hourly summary"]
-    fact --> yearly["mart: yearly summary"]
-    summary --> answers["mart: assignment answers"]
-```
+![Current dbt model lineage, tests, and exposure](Lineage%20Graph.png)
 
 Key analyst-facing relations in `analytics_marts`:
 

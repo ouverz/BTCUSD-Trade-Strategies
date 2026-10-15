@@ -56,7 +56,7 @@ Key analyst-facing relations in `analytics_marts`:
 
 ### Data and eligibility policy
 
-Raw and staging preserve physical source rows; they do not globally deduplicate candles. Resolution happens occurs at the two strategy endpoints.
+Raw and staging preserve physical source rows; they do not globally deduplicate candles. Resolution happens at the two strategy endpoints.
 
 | Condition | Treatment | Effect |
 |---|---|---|

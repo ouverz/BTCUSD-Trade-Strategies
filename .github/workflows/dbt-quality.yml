@@ -31,6 +31,13 @@ jobs:
         run: ./run.sh --reload
       - name: Assert smoke-test row counts and outcomes
         run: docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U bitcoin -d bitcoin -f /dev/stdin < tests/fixtures/assert_ci_results.sql
+      - name: Verify no-eligible date-range behavior
+        env:
+          DATA_FILE: ${{ runner.temp }}/ci_candles.csv
+          POSTGRES_PASSWORD: ci-only-password
+        run: |
+          ./run.sh --start-date 2030-01-01 --end-date 2030-01-02
+          docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U bitcoin -d bitcoin -f /dev/stdin < tests/fixtures/assert_empty_range_results.sql
       - name: Preserve dbt artifacts
         if: always()
         uses: actions/upload-artifact@v4

@@ -20,7 +20,7 @@ The assignment leaves some terms and edge cases open to interpretation. The proj
 | Missing or out-of-window periods | Keep requested candidates visible; exclude incomplete candidates from performance, and report source-window coverage separately. | Makes exclusions auditable and helps assess whether strategy comparisons have comparable coverage. |
 | Account and execution costs | Start normalized equity at `1.0` and fully reinvest; do not model fees, slippage, or execution constraints absent from the supplied data. | Defines the simulation scope and avoids presenting the output as realized or net returns. |
 
-### Questions answered
+## Questions answered
 
 1. Which hour of the day had the greatest returns?
 2. Which hour of the day had the lowest maximum losses?

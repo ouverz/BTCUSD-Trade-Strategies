@@ -6,6 +6,20 @@ The Bitcoin Backtesting Engine assignment asks to evaluate an analyst’s propos
 
 Each strategy uses the same UTC entry hour every day across the entire eligible date range. For example, the 22:00 strategy enters at exactly the `22:00:00` candle open and exits at the `22:59:59` candle close. A date contributes a trade only when both endpoint observations meet the eligibility rules. Gains and losses are fully reinvested in subsequent eligible trades. The analysis can be repeated for different hours and evaluation date ranges.
 
+### Key assumptions and decisions
+
+The assignment leaves some terms and edge cases open to interpretation. The project makes these choices explicitly:
+
+| Ambiguity | Assumption used | Why it matters |
+|---|---|---|
+| Timezone and strategy schedule | Interpret source timestamps as UTC and evaluate one strategy for each of the 24 UTC entry hours. | Establishes consistent daily boundaries and makes each hour’s strategy reproducible. |
+| Meaning of “greatest returns” | Rank strategies by full-history compounded return, not average trade return. | Measures the outcome of sequentially reinvesting eligible trade returns. |
+| Meaning of “maximum losses” | Interpret this as maximum peak-to-trough drawdown magnitude, not the single worst trade. | Defines the risk metric used to select the second assignment answer. |
+| Entry and exit execution | Use the exact entry-hour candle open and the `:59:59` candle close; never substitute a nearby observation. | Keeps the simulated holding period and price-selection rule fixed. |
+| Duplicate and conflicting endpoints | Accept repeated rows when their relevant prices agree; exclude a candidate when endpoint prices conflict or an exit copy is malformed. | Preserves source rows and diagnostics without arbitrarily selecting a price. |
+| Missing or out-of-window periods | Keep requested candidates visible; exclude incomplete candidates from performance, and report source-window coverage separately. | Makes exclusions auditable and helps assess whether strategy comparisons have comparable coverage. |
+| Account and execution costs | Start normalized equity at `1.0` and fully reinvest; do not model fees, slippage, or execution constraints absent from the supplied data. | Defines the simulation scope and avoids presenting the output as realized or net returns. |
+
 ### Questions answered
 
 1. Which hour of the day had the greatest returns?
